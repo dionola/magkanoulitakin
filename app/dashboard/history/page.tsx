@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
 interface Expense {
@@ -8,52 +8,38 @@ interface Expense {
   name: string
   amount: number
   date: string
-  budget: string
+  budget?: string
   paidBy: string
   splitWith: string[]
   type: 'expense' | 'settlement'
 }
 
-const mockExpenses: Expense[] = [
-  { id: '1', name: 'Flight tickets', amount: 320, date: '2024-01-15', budget: 'Vacation Trip', paidBy: 'You', splitWith: ['You', 'Alice', 'Bob'], type: 'expense' },
-  { id: '2', name: 'Hotel accommodation', amount: 450, date: '2024-01-16', budget: 'Vacation Trip', paidBy: 'Alice', splitWith: ['You', 'Alice', 'Bob'], type: 'expense' },
-  { id: '3', name: 'Dinner', amount: 120, date: '2024-01-17', budget: 'Vacation Trip', paidBy: 'Bob', splitWith: ['You', 'Alice', 'Bob'], type: 'expense' },
-  { id: '4', name: 'Car rental', amount: 310, date: '2024-01-18', budget: 'Vacation Trip', paidBy: 'Charlie', splitWith: ['You', 'Alice', 'Bob', 'Charlie'], type: 'expense' },
-  { id: '5', name: 'Rent payment', amount: 3000, date: '2024-01-20', budget: 'House Rent', paidBy: 'You', splitWith: ['You', 'David', 'Eve'], type: 'expense' },
-  { id: '6', name: 'Settlement', amount: 75.50, date: '2024-01-21', budget: 'Vacation Trip', paidBy: 'You', splitWith: [], type: 'settlement' },
-  { id: '7', name: 'Groceries', amount: 85, date: '2024-01-22', budget: 'House Rent', paidBy: 'David', splitWith: ['You', 'David', 'Eve'], type: 'expense' },
-  { id: '8', name: 'Settlement', amount: 45, date: '2024-01-23', budget: 'Vacation Trip', paidBy: 'Bob', splitWith: [], type: 'settlement' },
-  { id: '9', name: 'Lunch', amount: 45, date: '2024-01-10', budget: 'Vacation Trip', paidBy: 'You', splitWith: ['You', 'Alice'], type: 'expense' },
-  { id: '10', name: 'Taxi', amount: 25, date: '2024-01-12', budget: 'Vacation Trip', paidBy: 'Alice', splitWith: ['You', 'Alice', 'Bob'], type: 'expense' },
-]
-
 export default function HistoryPage() {
   const [dateRange, setDateRange] = useState('all')
   const [expandedExpense, setExpandedExpense] = useState<string | null>(null)
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
-  const getFilteredExpenses = () => {
-    const now = new Date()
-    const currentMonth = now.getMonth()
-    const currentYear = now.getFullYear()
+  useEffect(() => {
+    fetchExpenses()
+  }, [dateRange])
 
-    return mockExpenses.filter(expense => {
-      const expenseDate = new Date(expense.date)
-      
-      if (dateRange === 'thisMonth') {
-        return expenseDate.getMonth() === currentMonth && expenseDate.getFullYear() === currentYear
-      } else if (dateRange === 'lastMonth') {
-        const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1
-        const year = currentMonth === 0 ? currentYear - 1 : currentYear
-        return expenseDate.getMonth() === lastMonth && expenseDate.getFullYear() === year
-      } else if (dateRange === 'thisYear') {
-        return expenseDate.getFullYear() === currentYear
+  const fetchExpenses = async () => {
+    try {
+      setIsLoading(true)
+      const response = await fetch(`/api/expenses?dateRange=${dateRange}`)
+      if (response.ok) {
+        const data = await response.json()
+        setExpenses(data)
       }
-      return true
-    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    } catch (error) {
+      console.error('Failed to fetch expenses:', error)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const filteredExpenses = getFilteredExpenses()
-  const totalSpent = filteredExpenses
+  const totalSpent = expenses
     .filter(e => e.type === 'expense')
     .reduce((sum, e) => sum + e.amount, 0)
 
@@ -97,10 +83,12 @@ export default function HistoryPage() {
           <h2 className="text-2xl font-bold text-background mb-8">all expenses</h2>
 
           <div className="space-y-4">
-            {filteredExpenses.length === 0 ? (
+            {isLoading ? (
+              <p className="text-background/50 text-sm">loading...</p>
+            ) : expenses.length === 0 ? (
               <p className="text-background/50 text-sm">no expenses in this period</p>
             ) : (
-              filteredExpenses.map(expense => (
+              expenses.map(expense => (
                 <div key={expense.id} className="border-b border-background/20 pb-4">
                   <button
                     onClick={() => toggleExpense(expense.id)}
@@ -109,7 +97,7 @@ export default function HistoryPage() {
                     <div className="flex-1">
                       <p className="text-lg font-bold text-background">{expense.name}</p>
                       <p className="text-sm text-background/50 mt-1">
-                        {expense.date} • {expense.budget} • {expense.paidBy}
+                        {expense.date} • {expense.budget || 'no budget'} • {expense.paidBy}
                       </p>
                     </div>
                     <div className="flex items-center gap-4">
@@ -128,7 +116,7 @@ export default function HistoryPage() {
                         <span className="font-medium text-background">type:</span> {expense.type}
                       </p>
                       <p className="text-sm text-background/50">
-                        <span className="font-medium text-background">budget:</span> {expense.budget}
+                        <span className="font-medium text-background">budget:</span> {expense.budget || 'no budget'}
                       </p>
                       <p className="text-sm text-background/50">
                         <span className="font-medium text-background">paid by:</span> {expense.paidBy}

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useSession, signOut } from 'next-auth/react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import { Home, Settings, LogOut, Menu, X, Users } from 'lucide-react'
 
@@ -15,17 +16,10 @@ const navItems = [
 export function Sidebar() {
   const pathname = usePathname()
   const [isOpen, setIsOpen] = useState(false)
-  const [user] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const stored = sessionStorage.getItem('user')
-      return stored ? JSON.parse(stored) : { email: 'user@example.com', name: 'User' }
-    }
-    return { email: 'user@example.com', name: 'User' }
-  })
+  const { data: session } = useSession()
 
-  const handleLogout = () => {
-    sessionStorage.removeItem('user')
-    window.location.href = '/auth/signin'
+  const handleLogout = async () => {
+    await signOut({ callbackUrl: '/auth/signin' })
   }
 
   const NavContent = () => (
@@ -67,8 +61,12 @@ export function Sidebar() {
       <div className="absolute bottom-0 left-0 right-0 border-t border-background/20 px-4 py-6">
         <div className="flex items-center justify-between gap-3 px-3 py-3">
           <div className="flex-1 min-w-0">
-            <p className="truncate text-xs font-medium text-background">{user.name}</p>
-            <p className="truncate text-xs text-background/50">{user.email}</p>
+            {session?.user && (
+              <>
+                <p className="truncate text-xs font-medium text-background">{session.user.name}</p>
+                <p className="truncate text-xs text-background/50">{session.user.email}</p>
+              </>
+            )}
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

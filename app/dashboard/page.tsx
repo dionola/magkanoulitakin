@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { ChevronDown, ChevronUp, Plus } from 'lucide-react'
 
@@ -10,110 +11,133 @@ interface Expense {
   name: string
   amount: number
   date: string
-  budget: string
+  budget?: string
   paidBy: string
   splitWith: string[]
   type: 'expense' | 'settlement'
 }
 
-const mockExpenses: Expense[] = [
-  { id: '1', name: 'Flight tickets', amount: 320, date: '2024-01-15', budget: 'Vacation Trip', paidBy: 'You', splitWith: ['You', 'Alice', 'Bob'], type: 'expense' },
-  { id: '2', name: 'Hotel accommodation', amount: 450, date: '2024-01-16', budget: 'Vacation Trip', paidBy: 'Alice', splitWith: ['You', 'Alice', 'Bob'], type: 'expense' },
-  { id: '3', name: 'Dinner', amount: 120, date: '2024-01-17', budget: 'Vacation Trip', paidBy: 'Bob', splitWith: ['You', 'Alice', 'Bob'], type: 'expense' },
-  { id: '4', name: 'Car rental', amount: 310, date: '2024-01-18', budget: 'Vacation Trip', paidBy: 'Charlie', splitWith: ['You', 'Alice', 'Bob', 'Charlie'], type: 'expense' },
-  { id: '5', name: 'Rent payment', amount: 3000, date: '2024-01-20', budget: 'House Rent', paidBy: 'You', splitWith: ['You', 'David', 'Eve'], type: 'expense' },
-  { id: '6', name: 'Settlement', amount: 75.50, date: '2024-01-21', budget: 'Vacation Trip', paidBy: 'You', splitWith: [], type: 'settlement' },
-  { id: '7', name: 'Groceries', amount: 85, date: '2024-01-22', budget: 'House Rent', paidBy: 'David', splitWith: ['You', 'David', 'Eve'], type: 'expense' },
-  { id: '8', name: 'Settlement', amount: 45, date: '2024-01-23', budget: 'Vacation Trip', paidBy: 'Bob', splitWith: [], type: 'settlement' },
-]
-
 interface Friend {
   id: string
   name: string
   email: string
+  image?: string
 }
-
-const mockFriends: Friend[] = [
-  { id: '2', name: 'Alice Johnson', email: 'alice@example.com' },
-  { id: '3', name: 'Bob Smith', email: 'bob@example.com' },
-  { id: '4', name: 'Charlie Davis', email: 'charlie@example.com' },
-]
 
 export default function Dashboard() {
   const router = useRouter()
+  const { data: session, status } = useSession()
   const [dateRange, setDateRange] = useState('thisMonth')
   const [expandedExpense, setExpandedExpense] = useState<string | null>(null)
-  const [friends, setFriends] = useState<Friend[]>(mockFriends)
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [friends, setFriends] = useState<Friend[]>([])
   const [showAddFriendModal, setShowAddFriendModal] = useState(false)
   const [friendEmail, setFriendEmail] = useState('')
   const [showAddExpenseModal, setShowAddExpenseModal] = useState(false)
   const [newExpense, setNewExpense] = useState({
     name: '',
     amount: '',
-    paidBy: 'You',
-    splitWith: ['You'],
+    paidBy: session?.user?.name || 'You',
+    splitWith: [session?.user?.name || 'You'],
     budget: '',
   })
   const [splitDropdownOpen, setSplitDropdownOpen] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isAddingExpense, setIsAddingExpense] = useState(false)
+  const [isAddingFriend, setIsAddingFriend] = useState(false)
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const user = sessionStorage.getItem('user')
-      if (!user) {
-        router.push('/auth/signin')
-      }
+    if (status === 'unauthenticated') {
+      router.push('/auth/signin')
     }
-  }, [router])
+  }, [status, router])
 
-  const getFilteredExpenses = () => {
-    const now = new Date()
-    const currentMonth = now.getMonth()
-    const currentYear = now.getFullYear()
+  useEffect(() => {
+    if (status === 'authenticated') {
+      fetchExpenses()
+      fetchFriends()
+    }
+  }, [status, dateRange])
 
-    return mockExpenses.filter(expense => {
-      const expenseDate = new Date(expense.date)
-      
-      if (dateRange === 'thisMonth') {
-        return expenseDate.getMonth() === currentMonth && expenseDate.getFullYear() === currentYear
-      } else if (dateRange === 'lastMonth') {
-        const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1
-        const year = currentMonth === 0 ? currentYear - 1 : currentYear
-        return expenseDate.getMonth() === lastMonth && expenseDate.getFullYear() === year
-      } else if (dateRange === 'thisYear') {
-        return expenseDate.getFullYear() === currentYear
+  const fetchExpenses = async () => {
+    try {
+      setIsLoading(true)
+      const response = await fetch(`/api/expenses?dateRange=${dateRange}`)
+      if (response.ok) {
+        const data = await response.json()
+        setExpenses(data)
       }
-      return true
-    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    } catch (error) {
+      console.error('Failed to fetch expenses:', error)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const filteredExpenses = getFilteredExpenses()
-  const recentExpenses = filteredExpenses.slice(0, 5)
-  const totalSpent = filteredExpenses
+  const fetchFriends = async () => {
+    try {
+      const response = await fetch('/api/friends')
+      if (response.ok) {
+        const data = await response.json()
+        setFriends(data)
+      }
+    } catch (error) {
+      console.error('Failed to fetch friends:', error)
+    }
+  }
+
+  const recentExpenses = expenses.slice(0, 5)
+  const totalSpent = expenses
     .filter(e => e.type === 'expense')
     .reduce((sum, e) => sum + e.amount, 0)
 
-  const handleAddFriend = () => {
-    if (friendEmail.trim()) {
-      const newFriend: Friend = {
-        id: Date.now().toString(),
-        name: friendEmail.split('@')[0],
-        email: friendEmail,
+  const handleAddFriend = async () => {
+    if (!friendEmail.trim()) return
+
+    try {
+      setIsAddingFriend(true)
+      const response = await fetch('/api/friends', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: friendEmail }),
+      })
+
+      if (response.ok) {
+        await fetchFriends()
+        setFriendEmail('')
+        setShowAddFriendModal(false)
+      } else {
+        const error = await response.json()
+        alert(error.error || 'Failed to add friend')
       }
-      setFriends([...friends, newFriend])
-      setFriendEmail('')
-      setShowAddFriendModal(false)
+    } catch (error) {
+      alert('Failed to add friend')
+    } finally {
+      setIsAddingFriend(false)
     }
   }
 
-  const handleUnfriend = (friendId: string) => {
-    setFriends(friends.filter(f => f.id !== friendId))
+  const handleUnfriend = async (friendId: string) => {
+    try {
+      const response = await fetch(`/api/friends/${friendId}`, {
+        method: 'DELETE',
+      })
+
+      if (response.ok) {
+        await fetchFriends()
+      } else {
+        alert('Failed to remove friend')
+      }
+    } catch (error) {
+      alert('Failed to remove friend')
+    }
   }
 
   const toggleExpense = (expenseId: string) => {
     setExpandedExpense(expandedExpense === expenseId ? null : expenseId)
   }
 
-  const allPeople = ['You', ...friends.map(f => f.name)]
+  const allPeople = session?.user?.name ? [session.user.name, ...friends.map(f => f.name)] : ['You', ...friends.map(f => f.name)]
 
   const toggleSplitWith = (person: string) => {
     setNewExpense(prev => {
@@ -129,22 +153,46 @@ export default function Dashboard() {
     setNewExpense(prev => ({ ...prev, splitWith: allPeople }))
   }
 
-  const handleAddExpense = () => {
+  const handleAddExpense = async () => {
     if (!newExpense.name.trim() || !newExpense.amount || !newExpense.paidBy || newExpense.splitWith.length === 0) {
       return
     }
 
-    // In a real app, this would save to the backend
-    // For now, we'll just close the modal and show a success message
-    alert('expense added successfully')
-    setShowAddExpenseModal(false)
-    setNewExpense({
-      name: '',
-      amount: '',
-      paidBy: 'You',
-      splitWith: ['You'],
-      budget: '',
-    })
+    try {
+      setIsAddingExpense(true)
+      const response = await fetch('/api/expenses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newExpense.name,
+          amount: parseFloat(newExpense.amount),
+          date: new Date().toISOString().split('T')[0],
+          budget: newExpense.budget || undefined,
+          paidBy: newExpense.paidBy,
+          splitWith: newExpense.splitWith,
+          type: 'expense',
+        }),
+      })
+
+      if (response.ok) {
+        await fetchExpenses()
+        setShowAddExpenseModal(false)
+        setNewExpense({
+          name: '',
+          amount: '',
+          paidBy: session?.user?.name || 'You',
+          splitWith: [session?.user?.name || 'You'],
+          budget: '',
+        })
+      } else {
+        const error = await response.json()
+        alert(error.error || 'Failed to add expense')
+      }
+    } catch (error) {
+      alert('Failed to add expense')
+    } finally {
+      setIsAddingExpense(false)
+    }
   }
 
   return (
@@ -200,7 +248,9 @@ export default function Dashboard() {
           </div>
 
           <div className="space-y-4">
-            {recentExpenses.length === 0 ? (
+            {isLoading ? (
+              <p className="text-background/50 text-sm">loading...</p>
+            ) : recentExpenses.length === 0 ? (
               <p className="text-background/50 text-sm">no expenses in this period</p>
             ) : (
               recentExpenses.map(expense => (
@@ -318,9 +368,10 @@ export default function Dashboard() {
                 </button>
                 <button
                   onClick={handleAddFriend}
-                  className="flex-1 border-2 border-background py-3 text-base font-medium text-background transition-colors hover:bg-background hover:text-foreground"
+                  disabled={isAddingFriend}
+                  className="flex-1 border-2 border-background py-3 text-base font-medium text-background transition-colors hover:bg-background hover:text-foreground disabled:opacity-50"
                 >
-                  add
+                  {isAddingFriend ? 'adding...' : 'add'}
                 </button>
               </div>
             </div>
@@ -377,7 +428,9 @@ export default function Dashboard() {
                   style={{ colorScheme: 'dark' }}
                 >
                   {allPeople.map(person => (
-                    <option key={person} value={person} className="bg-foreground text-background">{person}</option>
+                    <option key={person} value={person} className="bg-foreground text-background">
+                      {person === session?.user?.name ? 'You' : person}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -411,7 +464,9 @@ export default function Dashboard() {
                             onChange={() => toggleSplitWith(person)}
                             className="h-4 w-4"
                           />
-                          <span className="font-medium text-base text-background flex-1">{person}</span>
+                          <span className="font-medium text-base text-background flex-1">
+                            {person === session?.user?.name ? 'You' : person}
+                          </span>
                         </label>
                       ))}
                     </div>
@@ -437,9 +492,10 @@ export default function Dashboard() {
                 </button>
                 <button
                   onClick={handleAddExpense}
-                  className="flex-1 border-2 border-background py-3 text-base font-medium text-background transition-colors hover:bg-background hover:text-foreground"
+                  disabled={isAddingExpense}
+                  className="flex-1 border-2 border-background py-3 text-base font-medium text-background transition-colors hover:bg-background hover:text-foreground disabled:opacity-50"
                 >
-                  add expense
+                  {isAddingExpense ? 'adding...' : 'add expense'}
                 </button>
               </div>
             </div>
