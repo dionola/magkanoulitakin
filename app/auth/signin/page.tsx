@@ -1,6 +1,6 @@
 'use client'
 
-import React from "react"
+import React, { useState } from "react"
 import { signIn } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -9,6 +9,35 @@ export default function SignIn() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const callbackUrl = searchParams.get('callbackUrl') || '/dashboard'
+  
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleEmailSignIn = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    setIsLoading(true)
+
+    try {
+      const result = await signIn('credentials', {
+        email,
+        password,
+        redirect: false,
+      })
+
+      if (result?.error) {
+        setError('Invalid email or password')
+        setIsLoading(false)
+      } else {
+        router.push(callbackUrl)
+      }
+    } catch (error) {
+      setError('An error occurred. Please try again.')
+      setIsLoading(false)
+    }
+  }
 
   const handleGoogleSignIn = async () => {
     try {
@@ -24,6 +53,11 @@ export default function SignIn() {
         <Link href="/" className="text-xl font-bold tracking-tight text-background">
           split
         </Link>
+        <nav className="flex items-center gap-6">
+          <Link href="/auth/signup" className="text-sm text-background/70 transition-colors hover:text-background">
+            sign up
+          </Link>
+        </nav>
       </header>
 
       <div className="flex flex-1 flex-col items-center justify-center px-6">
@@ -32,7 +66,49 @@ export default function SignIn() {
             sign in
           </h1>
 
-          <div className="mt-12">
+          <form onSubmit={handleEmailSignIn} className="mt-12 space-y-6">
+            <div>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                required
+                className="w-full border-b-2 border-background/30 bg-transparent pb-3 text-lg text-background placeholder:text-background/40 focus:border-background focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                className="w-full border-b-2 border-background/30 bg-transparent pb-3 text-lg text-background placeholder:text-background/40 focus:border-background focus:outline-none"
+              />
+            </div>
+
+            {error && (
+              <p className="text-sm text-red-400">{error}</p>
+            )}
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full border-2 border-background py-3 text-base font-medium text-background transition-colors hover:bg-background hover:text-foreground"
+            >
+              {isLoading ? 'signing in...' : 'sign in'}
+            </button>
+          </form>
+
+          <div className="mt-6 flex items-center gap-4">
+            <div className="flex-1 border-t border-background/20"></div>
+            <span className="text-sm text-background/50">or</span>
+            <div className="flex-1 border-t border-background/20"></div>
+          </div>
+
+          <div className="mt-6">
             <button
               onClick={handleGoogleSignIn}
               className="w-full border-2 border-background py-3 text-base font-medium text-background transition-colors hover:bg-background hover:text-foreground flex items-center justify-center gap-3"
@@ -57,6 +133,15 @@ export default function SignIn() {
               </svg>
               continue with google
             </button>
+          </div>
+
+          <div className="mt-12">
+            <p className="text-center text-sm text-background/70">
+              don't have an account?{' '}
+              <Link href="/auth/signup" className="text-background/70 transition-colors hover:text-background">
+                sign up
+              </Link>
+            </p>
           </div>
         </div>
       </div>

@@ -3,6 +3,7 @@ import mongoose, { Schema, Model } from 'mongoose'
 export interface IUser extends mongoose.Document {
   email: string
   name: string
+  password?: string
   image?: string
   emailVerified?: Date
   createdAt: Date
@@ -21,6 +22,10 @@ const UserSchema = new Schema<IUser>(
     name: {
       type: String,
       required: true,
+    },
+    password: {
+      type: String,
+      select: false, // Don't include password in queries by default
     },
     image: {
       type: String,

@@ -15,7 +15,8 @@ export async function GET(req: NextRequest) {
     }
 
     await connectDB()
-    const user = await import('@/lib/models/User').then(m => m.default).then(User => User.findOne({ email: session.user.email }))
+    const User = await import('@/lib/models/User').then(m => m.default)
+    const user = await User.findOne({ email: session.user.email })
     
     if (!user) {
       return errorResponse(new Error('User not found'), 'User not found', 404)
