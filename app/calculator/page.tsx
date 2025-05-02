@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useSession, signOut } from 'next-auth/react'
 import { Trash2, Plus, Moon, Sun, LogOut, LogIn, UserPlus } from 'lucide-react'
 
 interface Person {
@@ -36,7 +37,6 @@ export default function Calculator() {
   const [splitDropdownOpen, setSplitDropdownOpen] = useState(false)
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null)
   const [editValues, setEditValues] = useState<{ name: string; amount: string }>({ name: '', amount: '' })
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [editingPersonId, setEditingPersonId] = useState<string | null>(null)
   const [editingPersonName, setEditingPersonName] = useState('')
   const [showReceiptScanner, setShowReceiptScanner] = useState(false)
@@ -46,21 +46,18 @@ export default function Calculator() {
   const [receiptDropdownOpen, setReceiptDropdownOpen] = useState<string | null>(null)
   const ENABLE_RECEIPT_SCANNER = false
   
-  // Check if user is logged in on mount and handle dark mode
-  if (typeof window !== 'undefined') {
-    if (!isLoggedIn) {
-      const user = sessionStorage.getItem('user')
-      if (user) {
-        setIsLoggedIn(true)
-      }
-    }
-    // Toggle dark mode on document root
+  // Use NextAuth session instead of sessionStorage
+  const { data: session, status } = useSession()
+  const isLoggedIn = status === 'authenticated' && !!session
+  
+  // Handle dark mode
+  useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark')
     } else {
       document.documentElement.classList.remove('dark')
     }
-  }
+  }, [darkMode])
 
   const addPerson = () => {
     if (newPersonName.trim()) {
@@ -322,10 +319,7 @@ export default function Calculator() {
           )}
           {isLoggedIn ? (
             <button
-              onClick={() => {
-                sessionStorage.removeItem('user')
-                setIsLoggedIn(false)
-              }}
+              onClick={() => signOut({ callbackUrl: '/auth/signin' })}
               className="text-sm text-background/70 transition-colors hover:text-background"
             >
               logout
