@@ -10,11 +10,6 @@ export const authOptions: NextAuthOptions = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      authorization: {
-        params: {
-          redirect_uri: `${process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL}/api/auth/google/callback`,
-        },
-      },
     }),
     CredentialsProvider({
       name: 'Credentials',
@@ -144,10 +139,14 @@ export const authOptions: NextAuthOptions = {
       return session
     },
     async signIn({ user, account, profile }) {
+      console.log('[SignIn] ==========================================')
       console.log('[SignIn] SignIn callback called', { 
         provider: account?.provider,
         userEmail: user?.email,
-        userName: user?.name 
+        userName: user?.name,
+        accountType: account?.type,
+        accountAccessToken: account?.access_token ? 'present' : 'missing',
+        accountIdToken: account?.id_token ? 'present' : 'missing',
       })
       
       if (account?.provider === 'google') {
@@ -194,18 +193,22 @@ export const authOptions: NextAuthOptions = {
           }
           
           console.log('[SignIn] Google OAuth sign-in successful, returning true')
+          console.log('[SignIn] ==========================================')
           return true
         } catch (error) {
+          console.error('[SignIn] ==========================================')
           console.error('[SignIn] Error in signIn callback:', error)
           if (error instanceof Error) {
             console.error('[SignIn] Error message:', error.message)
             console.error('[SignIn] Error stack:', error.stack)
           }
+          console.error('[SignIn] ==========================================')
           return false
         }
       }
       // For credentials provider, user is already authenticated
       console.log('[SignIn] Credentials provider, returning true')
+      console.log('[SignIn] ==========================================')
       return true
     },
   },
@@ -216,5 +219,46 @@ export const authOptions: NextAuthOptions = {
 
 const handler = NextAuth(authOptions)
 
-export { handler as GET, handler as POST }
+// Wrap handler with comprehensive logging
+async function loggedHandler(
+  req: NextRequest, 
+  context: { params: Promise<{ nextauth: string[] }> }
+) {
+  const url = req.nextUrl
+  const path = url.pathname
+  const searchParams = Object.fromEntries(url.searchParams)
+  
+  // Await params as it's a Promise in Next.js 15+
+  const params = await context.params
+  
+  console.log('[NextAuth Handler] ==========================================')
+  console.log('[NextAuth Handler] Request received')
+  console.log('[NextAuth Handler] Method:', req.method)
+  console.log('[NextAuth Handler] Path:', path)
+  console.log('[NextAuth Handler] Search params:', searchParams)
+  console.log('[NextAuth Handler] NextAuth route:', params?.nextauth)
+  console.log('[NextAuth Handler] Full URL:', url.toString())
+  console.log('[NextAuth Handler] Cookies:', req.cookies.getAll().map(c => ({ name: c.name, value: c.value?.substring(0, 20) + '...' })))
+  
+  try {
+    const response = await handler(req, { params: Promise.resolve(params) })
+    
+    console.log('[NextAuth Handler] Response generated')
+    console.log('[NextAuth Handler] Status:', response?.status)
+    console.log('[NextAuth Handler] Response cookies:', response?.headers.get('set-cookie')?.substring(0, 100))
+    console.log('[NextAuth Handler] ==========================================')
+    
+    return response
+  } catch (error) {
+    console.error('[NextAuth Handler] ERROR:', error)
+    if (error instanceof Error) {
+      console.error('[NextAuth Handler] Error message:', error.message)
+      console.error('[NextAuth Handler] Error stack:', error.stack)
+    }
+    console.log('[NextAuth Handler] ==========================================')
+    throw error
+  }
+}
+
+export { loggedHandler as GET, loggedHandler as POST }
 

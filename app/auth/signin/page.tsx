@@ -40,10 +40,15 @@ export default function SignIn() {
   }
 
   const handleGoogleSignIn = async () => {
+    console.log('[SignIn] Google sign-in initiated', { callbackUrl })
     try {
-      await signIn('google', { callbackUrl })
+      const result = await signIn('google', { 
+        callbackUrl,
+        redirect: true 
+      })
+      console.log('[SignIn] Google signIn result:', result)
     } catch (error) {
-      console.error('Sign in error:', error)
+      console.error('[SignIn] Google sign-in error:', error)
     }
   }
 

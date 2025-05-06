@@ -47,10 +47,19 @@ export default function Dashboard() {
   const [isAddingFriend, setIsAddingFriend] = useState(false)
 
   useEffect(() => {
+    console.log('[Dashboard] Session status changed:', { status, hasSession: !!session, userEmail: session?.user?.email })
+    
     if (status === 'unauthenticated') {
+      console.log('[Dashboard] User not authenticated, redirecting to signin')
       router.push('/auth/signin')
+    } else if (status === 'authenticated') {
+      console.log('[Dashboard] User authenticated:', { 
+        id: session?.user?.id, 
+        email: session?.user?.email,
+        name: session?.user?.name 
+      })
     }
-  }, [status, router])
+  }, [status, session, router])
 
   useEffect(() => {
     if (status === 'authenticated') {
