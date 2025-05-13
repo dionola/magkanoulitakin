@@ -61,54 +61,79 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async jwt({ token, user, account }) {
+      console.log('[JWT] ==========================================')
       console.log('[JWT] JWT callback called', { 
         hasUser: !!user, 
         userEmail: user?.email, 
         userId: user?.id,
         accountProvider: account?.provider,
+        accountType: account?.type,
         tokenId: token.id 
       })
       
       // Initial sign in - user object is available
       if (user) {
-        // For credentials provider, user.id is already set
-        if (user.id) {
+        // Check provider first to determine how to handle the user ID
+        if (account?.provider === 'google') {
+          // For Google OAuth, user.id is the Google account ID (not our MongoDB _id)
+          // We need to fetch the user from database by email to get our MongoDB _id
+          console.log('[JWT] Google OAuth - fetching user from DB by email:', user.email)
+          await connectDB()
+          const dbUser = await User.findOne({ email: user.email })
+          if (dbUser) {
+            console.log('[JWT] Found user in DB:', {
+              mongoId: dbUser._id.toString(),
+              email: dbUser.email,
+              name: dbUser.name
+            })
+            token.id = dbUser._id.toString()
+            token.email = dbUser.email
+            token.name = dbUser.name
+            token.picture = dbUser.image
+          } else {
+            console.error('[JWT] ERROR: User not found in DB after Google OAuth:', user.email)
+            console.error('[JWT] This should not happen - user should be created in signIn callback')
+          }
+        } else if (account?.provider === 'credentials') {
+          // For credentials provider, user.id is already our MongoDB _id
           console.log('[JWT] Credentials provider - using existing user.id:', user.id)
           token.id = user.id
           token.email = user.email
           token.name = user.name
           token.picture = user.image
         } else if (user.email) {
-          // For Google OAuth, fetch user from database to get the ID
-          // The user should already be created in signIn callback, but we fetch it here to ensure we have the ID
-          console.log('[JWT] Google OAuth - fetching user from DB:', user.email)
+          // Fallback: if we have email but no provider info, try to find user by email
+          console.log('[JWT] Unknown provider - fetching user from DB by email:', user.email)
           await connectDB()
           const dbUser = await User.findOne({ email: user.email })
           if (dbUser) {
-            console.log('[JWT] Found user in DB:', dbUser._id.toString())
             token.id = dbUser._id.toString()
             token.email = dbUser.email
             token.name = dbUser.name
             token.picture = dbUser.image
-          } else {
-            console.error('[JWT] User not found in DB after Google OAuth:', user.email)
           }
         }
       }
       
-      // On subsequent requests, refresh user data if needed
-      if (token.id && account?.provider === 'google') {
-        console.log('[JWT] Refreshing user data for token.id:', token.id)
+      // On subsequent requests (no user object), refresh user data if needed
+      if (token.id && !user && account?.provider === 'google') {
+        console.log('[JWT] Subsequent request - refreshing user data for token.id:', token.id)
         await connectDB()
-        const dbUser = await User.findById(token.id)
-        if (dbUser) {
-          token.email = dbUser.email
-          token.name = dbUser.name
-          token.picture = dbUser.image
+        // Only try to find by ID if it looks like a MongoDB ObjectId (24 hex chars)
+        if (/^[0-9a-fA-F]{24}$/.test(token.id)) {
+          const dbUser = await User.findById(token.id)
+          if (dbUser) {
+            token.email = dbUser.email
+            token.name = dbUser.name
+            token.picture = dbUser.image
+          }
+        } else {
+          console.error('[JWT] Invalid token.id format (not MongoDB ObjectId):', token.id)
         }
       }
       
       console.log('[JWT] Returning token with id:', token.id)
+      console.log('[JWT] ==========================================')
       return token
     },
     async session({ session, token }) {

@@ -40,3 +40,5 @@ const Friend: Model<IFriend> = mongoose.models.Friend || mongoose.model<IFriend>
 
 export default Friend
 
+
+

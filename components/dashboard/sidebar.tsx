@@ -4,13 +4,11 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
-import { Home, Settings, LogOut, Menu, X, Users } from 'lucide-react'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Home, LogOut, Menu, X } from 'lucide-react'
 
 const navItems = [
   { href: '/dashboard', label: 'Overview', icon: Home },
-  { href: '/dashboard/history', label: 'History', icon: Users },
-  { href: '/dashboard/settings', label: 'Settings', icon: Settings },
 ]
 
 export function Sidebar() {
@@ -75,10 +73,6 @@ export function Sidebar() {
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="bg-foreground border border-background/20">
-              <DropdownMenuItem asChild className="text-background">
-                <Link href="/dashboard/settings">settings</Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout} className="text-background">
                 <LogOut className="mr-2 h-4 w-4" />
                 logout
@@ -104,12 +98,12 @@ export function Sidebar() {
       {isOpen && (
         <div className="fixed inset-0 z-40 lg:hidden" onClick={() => setIsOpen(false)}>
           <div
-            className="absolute inset-y-0 left-0 z-50 w-64 bg-foreground border-r border-background/20"
+            className="absolute inset-y-0 left-0 z-50 w-72 max-w-[85vw] bg-foreground border-r border-background/20 overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <NavContent />
           </div>
-          <div className="absolute inset-0 bg-black/80" />
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
         </div>
       )}
 

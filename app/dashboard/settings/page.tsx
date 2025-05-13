@@ -45,15 +45,6 @@ export default function SettingsPage() {
           <p className="text-sm text-background/50 font-medium">manage your account</p>
         </div>
 
-        {/* Link to Calculator */}
-        <div className="mb-12 border-b border-background/20 pb-8">
-          <Link
-            href="/calculator"
-            className="text-sm text-background/70 transition-colors hover:text-background inline-block"
-          >
-            ← add expenses
-          </Link>
-        </div>
 
 
         {/* Delete Account */}

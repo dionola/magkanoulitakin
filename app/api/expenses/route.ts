@@ -24,6 +24,8 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url)
     const dateRange = searchParams.get('dateRange') || 'all'
+    const startDate = searchParams.get('startDate')
+    const endDate = searchParams.get('endDate')
 
     const now = new Date()
     const currentMonth = now.getMonth()
@@ -31,7 +33,15 @@ export async function GET(req: NextRequest) {
 
     let dateFilter: any = {}
 
-    if (dateRange === 'thisMonth') {
+    if (startDate && endDate) {
+      // Custom date range
+      dateFilter = {
+        date: {
+          $gte: new Date(startDate),
+          $lte: new Date(endDate + 'T23:59:59.999Z'),
+        },
+      }
+    } else if (dateRange === 'thisMonth') {
       dateFilter = {
         date: {
           $gte: new Date(currentYear, currentMonth, 1),
@@ -72,6 +82,7 @@ export async function GET(req: NextRequest) {
       paidBy: expense.paidBy,
       splitWith: expense.splitWith,
       type: expense.type,
+      transactionGroupId: expense.transactionGroupId,
       createdAt: expense.createdAt.toISOString(),
       updatedAt: expense.updatedAt.toISOString(),
     }))
@@ -110,6 +121,7 @@ export async function POST(req: NextRequest) {
       paidBy: validatedData.paidBy,
       splitWith: validatedData.splitWith,
       type: validatedData.type,
+      transactionGroupId: validatedData.transactionGroupId,
     })
 
     return successResponse(
@@ -122,6 +134,7 @@ export async function POST(req: NextRequest) {
         paidBy: expense.paidBy,
         splitWith: expense.splitWith,
         type: expense.type,
+        transactionGroupId: expense.transactionGroupId,
       },
       201
     )

@@ -9,6 +9,7 @@ export interface IExpense extends mongoose.Document {
   paidBy: string
   splitWith: string[]
   type: 'expense' | 'settlement'
+  transactionGroupId?: string
   createdAt: Date
   updatedAt: Date
 }
@@ -51,6 +52,10 @@ const ExpenseSchema = new Schema<IExpense>(
       enum: ['expense', 'settlement'],
       default: 'expense',
     },
+    transactionGroupId: {
+      type: String,
+      index: true,
+    },
   },
   {
     timestamps: true,
@@ -62,4 +67,6 @@ ExpenseSchema.index({ userId: 1, date: -1 })
 const Expense: Model<IExpense> = mongoose.models.Expense || mongoose.model<IExpense>('Expense', ExpenseSchema)
 
 export default Expense
+
+
 

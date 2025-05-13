@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useSession, signOut } from 'next-auth/react'
-import { Trash2, Plus, Moon, Sun, LogOut, LogIn, UserPlus } from 'lucide-react'
+import { Trash2, Plus, Moon, Sun, LogOut, LogIn, UserPlus, X } from 'lucide-react'
 
 interface Person {
   id: string
@@ -18,16 +18,40 @@ interface Expense {
   splitWith: string[]
   splitType: 'equal' | 'percentage' | 'exact'
   splitData: Record<string, number>
+  date?: string
+}
+
+interface Friend {
+  id: string
+  name: string
+  email: string
+  image?: string
 }
 
 export default function Calculator() {
-  const initialPeople = [
-    { id: '1', name: 'Person 1' },
-    { id: '2', name: 'Person 2' },
-  ]
+  const { data: session, status } = useSession()
+  const isLoggedIn = status === 'authenticated' && !!session
+
+  // Get user's first name or "Me"
+  const getUserDisplayName = () => {
+    if (session?.user?.name) {
+      const firstName = session.user.name.split(' ')[0]
+      return firstName
+    }
+    return 'Me'
+  }
+
+  const initialPersonName = getUserDisplayName()
+  const initialPeople = [{ id: 'user-current', name: initialPersonName }]
+
   const [people, setPeople] = useState<Person[]>(initialPeople)
+  const [friends, setFriends] = useState<Friend[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [newPersonName, setNewPersonName] = useState('')
+  const [showFriendSuggestions, setShowFriendSuggestions] = useState(false)
+  const [filteredFriends, setFilteredFriends] = useState<Friend[]>([])
+  const [friendInteractions, setFriendInteractions] = useState<Record<string, number>>({})
+  const [isPersonInputFocused, setIsPersonInputFocused] = useState(false)
   const [newExpenseName, setNewExpenseName] = useState('')
   const [newExpenseAmount, setNewExpenseAmount] = useState('')
   const [newExpensePaidBy, setNewExpensePaidBy] = useState(initialPeople[0]?.id || '')
@@ -44,12 +68,75 @@ export default function Calculator() {
   const [darkMode, setDarkMode] = useState(true)
   const [showAddFriendsModal, setShowAddFriendsModal] = useState(false)
   const [receiptDropdownOpen, setReceiptDropdownOpen] = useState<string | null>(null)
+  const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null)
+  const [friendExpenses, setFriendExpenses] = useState<Expense[]>([])
+  const [isLoadingFriendExpenses, setIsLoadingFriendExpenses] = useState(false)
   const ENABLE_RECEIPT_SCANNER = false
-  
-  // Use NextAuth session instead of sessionStorage
-  const { data: session, status } = useSession()
-  const isLoggedIn = status === 'authenticated' && !!session
-  
+
+  // Check if a person is a friend
+  const isFriend = (personId: string) => {
+    return friends.some(f => f.id === personId)
+  }
+
+  // Update initial person when session changes
+  useEffect(() => {
+    const displayName = getUserDisplayName()
+    const currentUser = people.find(p => p.id === 'user-current')
+    if (currentUser && currentUser.name !== displayName) {
+      setPeople(prev => prev.map(p =>
+        p.id === 'user-current' ? { ...p, name: displayName } : p
+      ))
+      setNewExpensePaidBy('user-current')
+      setNewExpenseSplitWith(['user-current'])
+    } else if (!currentUser) {
+      // If user-current doesn't exist, add it
+      const newPeople = [{ id: 'user-current', name: displayName }, ...people.filter(p => p.id !== 'user-current')]
+      setPeople(newPeople)
+      setNewExpensePaidBy('user-current')
+      setNewExpenseSplitWith(['user-current'])
+    }
+  }, [session?.user?.name])
+
+  // Load friend interactions from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('friendInteractions')
+      if (stored) {
+        try {
+          setFriendInteractions(JSON.parse(stored))
+        } catch (e) {
+          console.error('Failed to parse friend interactions:', e)
+        }
+      }
+    }
+  }, [])
+
+  // Save friend interactions to localStorage when updated
+  useEffect(() => {
+    if (typeof window !== 'undefined' && Object.keys(friendInteractions).length > 0) {
+      localStorage.setItem('friendInteractions', JSON.stringify(friendInteractions))
+    }
+  }, [friendInteractions])
+
+  // Fetch friends if logged in
+  useEffect(() => {
+    if (isLoggedIn) {
+      fetchFriends()
+    }
+  }, [isLoggedIn])
+
+  const fetchFriends = async () => {
+    try {
+      const response = await fetch('/api/friends')
+      if (response.ok) {
+        const data = await response.json()
+        setFriends(data)
+      }
+    } catch (error) {
+      console.error('Failed to fetch friends:', error)
+    }
+  }
+
   // Handle dark mode
   useEffect(() => {
     if (darkMode) {
@@ -59,12 +146,94 @@ export default function Calculator() {
     }
   }, [darkMode])
 
-  const addPerson = () => {
+  // Update friend interaction date
+  const updateFriendInteraction = (friendId: string) => {
+    setFriendInteractions(prev => ({
+      ...prev,
+      [friendId]: Date.now()
+    }))
+  }
+
+  // Sort friends by most recent interaction
+  const sortFriendsByInteraction = (friendsList: Friend[]): Friend[] => {
+    return [...friendsList].sort((a, b) => {
+      const aInteraction = friendInteractions[a.id] || 0
+      const bInteraction = friendInteractions[b.id] || 0
+      if (bInteraction !== aInteraction) {
+        return bInteraction - aInteraction // Most recent first
+      }
+      return a.name.localeCompare(b.name) // Alphabetical if no interaction
+    })
+  }
+
+  // Filter and sort friends based on input
+  useEffect(() => {
+    if (friends.length === 0) {
+      setFilteredFriends([])
+      setShowFriendSuggestions(false)
+      return
+    }
+
+    const availableFriends = friends.filter(friend =>
+      !people.find(p => p.id === friend.id || p.name === friend.name)
+    )
+
     if (newPersonName.trim()) {
-      const newPerson = { id: Date.now().toString(), name: newPersonName }
+      // Filter by name match
+      const filtered = availableFriends.filter(friend =>
+        friend.name.toLowerCase().includes(newPersonName.toLowerCase())
+      )
+      const sorted = sortFriendsByInteraction(filtered)
+      setFilteredFriends(sorted)
+      setShowFriendSuggestions(sorted.length > 0 && isPersonInputFocused)
+    } else if (isPersonInputFocused) {
+      // Show all available friends when input is focused and empty
+      const sorted = sortFriendsByInteraction(availableFriends)
+      setFilteredFriends(sorted)
+      setShowFriendSuggestions(sorted.length > 0)
+    } else {
+      setFilteredFriends([])
+      setShowFriendSuggestions(false)
+    }
+  }, [newPersonName, friends, people, isPersonInputFocused, friendInteractions])
+
+  const addPerson = (friendId?: string, friendName?: string) => {
+    const nameToAdd = friendName || newPersonName.trim()
+    if (nameToAdd) {
+      // Check if person already exists
+      const existingPerson = people.find(p => p.name.toLowerCase() === nameToAdd.toLowerCase())
+      if (existingPerson) {
+        setNewPersonName('')
+        setShowFriendSuggestions(false)
+        return
+      }
+
+      const newPerson = friendId
+        ? { id: friendId, name: friendName! }
+        : { id: Date.now().toString(), name: nameToAdd }
+
       setPeople([...people, newPerson])
       setNewExpenseSplitWith([...newExpenseSplitWith, newPerson.id])
       setNewPersonName('')
+      setShowFriendSuggestions(false)
+
+      // Update interaction date if it's a friend
+      if (friendId) {
+        updateFriendInteraction(friendId)
+      }
+    }
+  }
+
+  const handlePersonInputKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      // If there's a filtered friend and user hasn't selected, create new person
+      if (showFriendSuggestions && filteredFriends.length > 0) {
+        // User pressed enter without selecting, create new person
+        addPerson()
+      } else {
+        addPerson()
+      }
     }
   }
 
@@ -73,8 +242,56 @@ export default function Calculator() {
   }
 
   const startEditPerson = (person: Person) => {
+    // Don't allow editing friends
+    if (isFriend(person.id)) {
+      return
+    }
     setEditingPersonId(person.id)
     setEditingPersonName(person.name)
+  }
+
+  const handleFriendClick = async (friendId: string, friendName: string) => {
+    setSelectedFriendId(friendId)
+    setIsLoadingFriendExpenses(true)
+
+    // Get expenses from local state that include this friend
+    const localExpensesWithFriend = expenses.filter(expense => {
+      const paidByName = getPersonName(expense.paidBy)
+      const splitWithNames = expense.splitWith.map(id => getPersonName(id))
+      return paidByName === friendName || splitWithNames.includes(friendName)
+    })
+
+    // If logged in, also fetch from API
+    if (isLoggedIn) {
+      try {
+        const response = await fetch('/api/expenses?dateRange=all')
+        if (response.ok) {
+          const data = await response.json()
+          const apiExpensesWithFriend = data.filter((expense: any) =>
+            expense.paidBy === friendName || expense.splitWith.includes(friendName)
+          )
+          // Combine and deduplicate
+          const allExpenses = [...localExpensesWithFriend, ...apiExpensesWithFriend]
+          const uniqueExpenses = Array.from(
+            new Map(allExpenses.map(e => [e.id || e.name + e.amount + (e.date || ''), e])).values()
+          )
+          setFriendExpenses(uniqueExpenses.sort((a, b) => {
+            const dateA = a.date ? new Date(a.date).getTime() : 0
+            const dateB = b.date ? new Date(b.date).getTime() : 0
+            return dateB - dateA
+          }).slice(0, 10)) // Show most recent 10
+        } else {
+          setFriendExpenses(localExpensesWithFriend.slice(0, 10))
+        }
+      } catch (error) {
+        console.error('Failed to fetch friend expenses:', error)
+        setFriendExpenses(localExpensesWithFriend.slice(0, 10))
+      }
+    } else {
+      setFriendExpenses(localExpensesWithFriend.slice(0, 10))
+    }
+
+    setIsLoadingFriendExpenses(false)
   }
 
   const saveEditPerson = (id: string) => {
@@ -97,6 +314,16 @@ export default function Calculator() {
       splitData[personId] = perPerson
     })
 
+    // Update interaction dates for friends involved in this expense
+    const allInvolvedPersonIds = [...new Set([newExpensePaidBy, ...newExpenseSplitWith])]
+    allInvolvedPersonIds.forEach(personId => {
+      // Check if this person ID matches a friend ID
+      const friend = friends.find(f => f.id === personId)
+      if (friend) {
+        updateFriendInteraction(personId)
+      }
+    })
+
     setExpenses([
       ...expenses,
       {
@@ -107,6 +334,7 @@ export default function Calculator() {
         splitWith: newExpenseSplitWith,
         splitType: 'equal',
         splitData,
+        date: new Date().toISOString().split('T')[0],
       },
     ])
     setNewExpenseName('')
@@ -137,7 +365,7 @@ export default function Calculator() {
 
   const saveEditExpense = (id: string) => {
     if (!editValues.name.trim() || !editValues.amount) return
-    
+
     setExpenses(expenses.map(e =>
       e.id === id
         ? { ...e, name: editValues.name, amount: parseFloat(editValues.amount) }
@@ -204,7 +432,21 @@ export default function Calculator() {
       splitWith: newExpenseSplitWith,
       splitType: 'equal' as const,
       splitData: {},
+      date: new Date().toISOString().split('T')[0],
     }))
+
+    // Update interaction dates for friends involved in receipt expenses
+    const allInvolvedPersonIds = new Set<string>()
+    newExpenses.forEach(expense => {
+      allInvolvedPersonIds.add(expense.paidBy)
+      expense.splitWith.forEach(personId => allInvolvedPersonIds.add(personId))
+    })
+    allInvolvedPersonIds.forEach(personId => {
+      const friend = friends.find(f => f.id === personId)
+      if (friend) {
+        updateFriendInteraction(personId)
+      }
+    })
 
     setExpenses([...expenses, ...newExpenses])
     setShowReceiptScanner(false)
@@ -234,21 +476,55 @@ export default function Calculator() {
     })
 
     const settlements: Array<{ from: string; to: string; amount: number }> = []
-    const sortedBalances = Object.entries(balances).sort((a, b) => a[1] - b[1])
+    
+    // Create arrays of debtors (negative balance) and creditors (positive balance)
+    const debtors = Object.entries(balances)
+      .filter(([_, balance]) => balance < -0.01)
+      .map(([id, balance]) => ({ id, balance: Math.abs(balance) }))
+      .sort((a, b) => b.balance - a.balance) // Sort by largest debt first
+    
+    const creditors = Object.entries(balances)
+      .filter(([_, balance]) => balance > 0.01)
+      .map(([id, balance]) => ({ id, balance }))
+      .sort((a, b) => b.balance - a.balance) // Sort by largest credit first
 
-    for (let i = 0; i < sortedBalances.length / 2; i++) {
-      const debtor = sortedBalances[i]
-      const creditor = sortedBalances[sortedBalances.length - 1 - i]
+    // Greedy algorithm: match largest debtor with largest creditor
+    let debtorIndex = 0
+    let creditorIndex = 0
 
-      if (Math.abs(debtor[1]) > 0.01) {
-        const settleAmount = Math.min(Math.abs(debtor[1]), creditor[1])
+    while (debtorIndex < debtors.length && creditorIndex < creditors.length) {
+      const debtor = debtors[debtorIndex]
+      const creditor = creditors[creditorIndex]
+
+      // Skip if same person (shouldn't happen, but safety check)
+      if (debtor.id === creditor.id) {
+        creditorIndex++
+        continue
+      }
+
+      const settleAmount = Math.min(debtor.balance, creditor.balance)
+      
+      if (settleAmount > 0.01) {
         settlements.push({
-          from: debtor[0],
-          to: creditor[0],
+          from: debtor.id,
+          to: creditor.id,
           amount: settleAmount,
         })
-        balances[debtor[0]] += settleAmount
-        balances[creditor[0]] -= settleAmount
+
+        debtor.balance -= settleAmount
+        creditor.balance -= settleAmount
+
+        // Move to next debtor if fully settled
+        if (debtor.balance < 0.01) {
+          debtorIndex++
+        }
+
+        // Move to next creditor if fully settled
+        if (creditor.balance < 0.01) {
+          creditorIndex++
+        }
+      } else {
+        break
       }
     }
 
@@ -344,61 +620,103 @@ export default function Calculator() {
           <div>
             <h2 className="text-2xl font-bold text-background mb-8">people</h2>
             <div className="space-y-3 mb-6">
-              {people.map(person => (
-                <div key={person.id} className="group flex items-center justify-between">
-                  {editingPersonId === person.id ? (
-                    <div className="flex gap-2 flex-1">
-                      <input
-                        autoFocus
-                        type="text"
-                        value={editingPersonName}
-                        onChange={(e) => setEditingPersonName(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && saveEditPerson(person.id)}
-                        className="flex-1 bg-transparent text-lg text-background outline-none border-b-2 border-background/30 focus:border-background"
-                      />
-                      <button
-                        onClick={() => saveEditPerson(person.id)}
-                        className="font-bold text-sm opacity-70 hover:opacity-100"
-                      >
-                        Done
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <button
-                        onClick={() => startEditPerson(person)}
-                        className="text-xl font-bold text-background text-left cursor-pointer hover:opacity-70 transition"
-                      >
-                        {person.name}
-                      </button>
-                      {people.length > 1 && (
+              {people.map(person => {
+                const personIsFriend = isFriend(person.id)
+                return (
+                  <div key={person.id} className="group flex items-center justify-between">
+                    {editingPersonId === person.id && !personIsFriend ? (
+                      <div className="flex gap-2 flex-1">
+                        <input
+                          autoFocus
+                          type="text"
+                          value={editingPersonName}
+                          onChange={(e) => setEditingPersonName(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && saveEditPerson(person.id)}
+                          className="flex-1 bg-transparent text-lg text-background outline-none border-b-2 border-background/30 focus:border-background"
+                        />
                         <button
-                          onClick={() => removePerson(person.id)}
-                          className="text-background/40 hover:text-background transition opacity-0 group-hover:opacity-100"
+                          onClick={() => saveEditPerson(person.id)}
+                          className="font-bold text-sm opacity-70 hover:opacity-100"
                         >
-                          <Trash2 className="h-5 w-5" />
+                          Done
                         </button>
-                      )}
-                    </>
-                  )}
-                </div>
-              ))}
+                      </div>
+                    ) : (
+                      <>
+                        {personIsFriend ? (
+                          <button
+                            onClick={() => handleFriendClick(person.id, person.name)}
+                            className="text-xl font-bold text-background text-left cursor-pointer hover:opacity-70 transition underline decoration-background/30 hover:decoration-background"
+                          >
+                            {person.name}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => startEditPerson(person)}
+                            className="text-xl font-bold text-background text-left cursor-pointer hover:opacity-70 transition"
+                          >
+                            {person.name}
+                          </button>
+                        )}
+                        {people.length > 1 && (
+                          <button
+                            onClick={() => removePerson(person.id)}
+                            className="text-background/40 hover:text-background transition opacity-0 group-hover:opacity-100"
+                          >
+                            <Trash2 className="h-5 w-5" />
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )
+              })}
             </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                placeholder="add person"
-                value={newPersonName}
-                onChange={(e) => setNewPersonName(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && addPerson()}
-                className="flex-1 bg-transparent text-lg text-background outline-none border-b-2 border-background/30 placeholder:text-background/40 focus:border-background"
-              />
-              <button
-                onClick={addPerson}
-                className="w-10 h-10 flex items-center justify-center text-2xl font-bold opacity-50 hover:opacity-100 transition"
-              >
-                +
-              </button>
+            <div className="relative">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="add person"
+                  value={newPersonName}
+                  onChange={(e) => setNewPersonName(e.target.value)}
+                  onKeyPress={handlePersonInputKeyPress}
+                  onFocus={() => {
+                    setIsPersonInputFocused(true)
+                  }}
+                  onBlur={() => {
+                    setIsPersonInputFocused(false)
+                    // Delay closing to allow click on suggestion
+                    setTimeout(() => setShowFriendSuggestions(false), 200)
+                  }}
+                  className="flex-1 bg-transparent text-lg text-background outline-none border-b-2 border-background/30 placeholder:text-background/40 focus:border-background"
+                />
+                <button
+                  onClick={() => addPerson()}
+                  className="w-10 h-10 flex items-center justify-center text-2xl font-bold opacity-50 hover:opacity-100 transition"
+                >
+                  +
+                </button>
+              </div>
+
+              {/* Friend Suggestions Dropdown */}
+              {showFriendSuggestions && filteredFriends.length > 0 && (
+                <div
+                  className="absolute top-full left-0 right-0 mt-2 bg-foreground border border-background/20 z-10 max-h-48 overflow-y-auto"
+                  onMouseDown={(e) => e.preventDefault()} // Prevent blur when clicking dropdown
+                >
+                  {filteredFriends.map(friend => (
+                    <button
+                      key={friend.id}
+                      onClick={() => {
+                        addPerson(friend.id, friend.name)
+                      }}
+                      className="w-full text-left px-4 py-3 font-medium text-base text-background hover:bg-background/5 transition border-b border-background/20 last:border-b-0"
+                    >
+                      {friend.name}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -516,7 +834,7 @@ export default function Calculator() {
                         <Trash2 className="h-5 w-5" />
                       </button>
                     </div>
-                    
+
                     <div className="relative">
                       <button
                         onClick={() => setReceiptDropdownOpen(receiptDropdownOpen === item.id ? null : item.id)}
@@ -545,7 +863,7 @@ export default function Calculator() {
                   </div>
                 ))}
               </div>
-              
+
               <div className="flex gap-3">
                 <button
                   onClick={() => {
@@ -683,11 +1001,7 @@ export default function Calculator() {
           </div>
         )}
 
-        {expenses.length === 0 && (
-          <div className="mt-16 text-center py-12">
-            <p className="text-lg text-background/50 font-medium">add expenses to see settlements</p>
-          </div>
-        )}
+
       </div>
 
       {/* Add Friends Modal */}
@@ -719,12 +1033,12 @@ export default function Calculator() {
           <div className="w-full max-w-lg border border-background bg-foreground p-8 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-2xl font-bold text-background mb-6">add friends</h2>
             <div className="space-y-3 max-h-64 overflow-y-auto mb-8">
-              {mockFriends.map(friend => (
+              {friends.map(friend => (
                 <button
                   key={friend.id}
                   onClick={() => {
                     if (!people.find(p => p.id === friend.id)) {
-                      setPeople([...people, friend])
+                      setPeople([...people, { id: friend.id, name: friend.name }])
                       setNewExpenseSplitWith([...newExpenseSplitWith, friend.id])
                     }
                     setShowAddFriendsModal(false)
@@ -741,6 +1055,57 @@ export default function Calculator() {
             >
               close
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Friend Expenses Modal */}
+      {selectedFriendId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => {
+          setSelectedFriendId(null)
+          setFriendExpenses([])
+        }}>
+          <div className="w-full max-w-2xl border border-background bg-foreground p-8 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-background">
+                {people.find(p => p.id === selectedFriendId)?.name || 'Friend'}
+              </h2>
+              <button
+                onClick={() => {
+                  setSelectedFriendId(null)
+                  setFriendExpenses([])
+                }}
+                className="text-background/40 hover:text-background transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <h3 className="text-lg font-bold text-background mb-4">recent purchases</h3>
+
+            {isLoadingFriendExpenses ? (
+              <p className="text-background/50 text-sm">loading...</p>
+            ) : friendExpenses.length === 0 ? (
+              <p className="text-background/50 text-sm">no purchases yet</p>
+            ) : (
+              <div className="space-y-4">
+                {friendExpenses.map(expense => (
+                  <div key={expense.id} className="border-b border-background/20 pb-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <p className="text-lg font-bold text-background">{expense.name}</p>
+                        <p className="text-sm text-background/50 mt-1">
+                          {expense.date || 'No date'} • {currency}{expense.amount.toFixed(2)}
+                        </p>
+                        <p className="text-xs text-background/40 mt-1">
+                          {expense.paidBy === (people.find(p => p.id === selectedFriendId)?.name) ? 'paid by them' : 'split with them'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

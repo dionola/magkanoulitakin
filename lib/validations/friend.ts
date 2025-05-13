@@ -6,3 +6,5 @@ export const addFriendSchema = z.object({
 
 export type AddFriendInput = z.infer<typeof addFriendSchema>
 
+
+
