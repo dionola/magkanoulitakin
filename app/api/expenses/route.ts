@@ -79,6 +79,7 @@ export async function GET(req: NextRequest) {
       amount: expense.amount,
       date: expense.date.toISOString().split('T')[0],
       budget: expense.budget,
+      category: expense.category,
       paidBy: expense.paidBy,
       splitWith: expense.splitWith,
       type: expense.type,
@@ -118,11 +119,38 @@ export async function POST(req: NextRequest) {
       amount: validatedData.amount,
       date: validatedData.date ? new Date(validatedData.date) : new Date(),
       budget: validatedData.budget,
+      category: validatedData.category,
       paidBy: validatedData.paidBy,
       splitWith: validatedData.splitWith,
       type: validatedData.type,
       transactionGroupId: validatedData.transactionGroupId,
     })
+
+    // Auto-create shareable link if it doesn't exist
+    try {
+      const ShareableLink = await import('@/lib/models/ShareableLink').then(m => m.default)
+      const existingLink = await ShareableLink.findOne({
+        userId: user._id,
+        resourceType: 'expense',
+        resourceId: expense._id.toString(),
+        isActive: true,
+      })
+      
+      if (!existingLink) {
+        const crypto = await import('crypto')
+        const linkId = crypto.randomBytes(16).toString('hex')
+        
+        await ShareableLink.create({
+          userId: user._id,
+          linkId,
+          resourceType: 'expense',
+          resourceId: expense._id.toString(),
+          isActive: true,
+        })
+      }
+    } catch {
+      // Don't fail the request if link creation fails
+    }
 
     return successResponse(
       {
@@ -131,6 +159,7 @@ export async function POST(req: NextRequest) {
         amount: expense.amount,
         date: expense.date.toISOString().split('T')[0],
         budget: expense.budget,
+        category: expense.category,
         paidBy: expense.paidBy,
         splitWith: expense.splitWith,
         type: expense.type,

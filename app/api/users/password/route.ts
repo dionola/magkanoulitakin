@@ -5,12 +5,8 @@ import connectDB from '@/lib/db'
 import User from '@/lib/models/User'
 import bcrypt from 'bcryptjs'
 import { errorResponse, successResponse } from '@/lib/utils/errors'
+import { changePasswordSchema } from '@/lib/validations/user'
 import { z } from 'zod'
-
-const changePasswordSchema = z.object({
-  currentPassword: z.string().min(1, 'Current password is required'),
-  newPassword: z.string().min(8, 'Password must be at least 8 characters'),
-})
 
 export async function GET(req: NextRequest) {
   try {
@@ -69,4 +65,7 @@ export async function PUT(req: NextRequest) {
     return errorResponse(error)
   }
 }
+
+
+
 

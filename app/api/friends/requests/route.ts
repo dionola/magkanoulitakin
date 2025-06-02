@@ -5,6 +5,8 @@ import connectDB from '@/lib/db'
 import User from '@/lib/models/User'
 import Friend from '@/lib/models/Friend'
 import { errorResponse, successResponse } from '@/lib/utils/errors'
+import { acceptFriendRequestSchema } from '@/lib/validations/user'
+import { z } from 'zod'
 
 export async function GET(req: NextRequest) {
   try {
@@ -62,11 +64,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { requestId } = body
-
-    if (!requestId) {
-      return errorResponse(new Error('Request ID is required'), 'Request ID is required', 400)
-    }
+    const { requestId } = acceptFriendRequestSchema.parse(body)
 
     const friendRequest = await Friend.findOne({
       _id: requestId,
@@ -101,9 +99,13 @@ export async function POST(req: NextRequest) {
 
     return successResponse({ message: 'Friend request accepted' })
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return errorResponse(error, 'Validation error', 400)
+    }
     return errorResponse(error)
   }
 }
+
 
 
 

@@ -2,37 +2,28 @@
 
 import { useState } from 'react'
 import { Trash2 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 import { signOut } from 'next-auth/react'
 import Link from 'next/link'
+import { deleteAccount } from '@/lib/api'
 
 export default function SettingsPage() {
-  const router = useRouter()
   const [showDeleteAccount, setShowDeleteAccount] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState('')
   const [isDeleting, setIsDeleting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleDeleteAccount = async () => {
     if (deleteConfirm.toLowerCase() !== 'delete') {
-      alert('please type "delete" to confirm')
+      setError('please type "delete" to confirm')
       return
     }
-
     setIsDeleting(true)
-
+    setError(null)
     try {
-      const response = await fetch('/api/users/delete', {
-        method: 'DELETE',
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to delete account')
-      }
-
+      await deleteAccount()
       await signOut({ callbackUrl: '/auth/signin' })
-    } catch (error) {
-      alert(error instanceof Error ? error.message : 'Failed to delete account')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete account')
       setIsDeleting(false)
     }
   }
@@ -45,7 +36,11 @@ export default function SettingsPage() {
           <p className="text-sm text-background/50 font-medium">manage your account</p>
         </div>
 
-
+        {error && (
+          <div className="mb-6 p-4 border border-red-500/50 bg-red-500/10 text-red-500 rounded text-sm">
+            {error}
+          </div>
+        )}
 
         {/* Delete Account */}
         <div className="mb-12">

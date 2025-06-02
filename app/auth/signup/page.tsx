@@ -17,19 +17,9 @@ export default function SignUp() {
   const [error, setError] = useState('')
 
   const handleGoogleSignUp = async () => {
-    console.log('[SignUp] Starting Google sign-up...')
-    console.log('[SignUp] NEXTAUTH_URL:', process.env.NEXT_PUBLIC_APP_URL)
     try {
-      const result = await signIn('google', { 
-        callbackUrl: '/dashboard',
-        redirect: true 
-      })
-      console.log('[SignUp] Google signIn result:', result)
-    } catch (error) {
-      console.error('[SignUp] Google sign-up error:', error)
-      if (error instanceof Error) {
-        console.error('[SignUp] Error details:', { message: error.message, stack: error.stack })
-      }
+      await signIn('google', { callbackUrl: '/dashboard', redirect: true })
+    } catch {
       setError('Failed to sign up with Google. Please try again.')
     }
   }

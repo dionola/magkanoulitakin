@@ -5,6 +5,7 @@ export const createExpenseSchema = z.object({
   amount: z.number().positive('Amount must be positive'),
   date: z.string().or(z.date()),
   budget: z.string().optional(),
+  category: z.string().optional(),
   paidBy: z.string().min(1, 'Paid by is required'),
   splitWith: z.array(z.string()).min(1, 'At least one person must be included in split'),
   type: z.enum(['expense', 'settlement']).default('expense'),

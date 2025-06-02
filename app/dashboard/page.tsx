@@ -4,58 +4,33 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
 import Link from 'next/link'
-import { ChevronDown, ChevronUp, Plus, Trash2, Calendar, X } from 'lucide-react'
-
-interface Expense {
-  id: string
-  name: string
-  amount: number
-  date: string
-  budget?: string
-  paidBy: string
-  splitWith: string[]
-  type: 'expense' | 'settlement'
-  transactionGroupId?: string
-}
-
-interface Friend {
-  id: string
-  name: string
-  email: string
-  image?: string
-}
-
-interface TransactionGroup {
-  id: string
-  expenses: Expense[]
-  totalAmount: number
-  date: string
-  participants: string[]
-}
+import { ChevronDown, ChevronUp, Plus, Trash2, X } from 'lucide-react'
+import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import type { Expense, Friend, TransactionGroup } from '@/lib/types'
+import { getExpenses, updateMe, updatePassword, deleteAccount } from '@/lib/api'
+import { useExpenses } from '@/hooks/useExpenses'
+import { useFriends } from '@/hooks/useFriends'
+import { useFriendRequests } from '@/hooks/useFriendRequests'
+import { useUserPassword } from '@/hooks/useUserPassword'
+import { ErrorBanner } from '@/components/dashboard/ErrorBanner'
+import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter'
 
 export default function Dashboard() {
   const router = useRouter()
-  const { data: session, status } = useSession()
-  const [dateRange, setDateRange] = useState('thisMonth')
+  const { data: session, status, update: updateSession } = useSession()
+  const authenticated = status === 'authenticated'
+
+  const [dateRange, setDateRange] = useState<'thisMonth' | 'lastMonth' | 'thisYear' | 'all' | 'custom'>('thisMonth')
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate, setCustomEndDate] = useState('')
   const [showCustomDateRange, setShowCustomDateRange] = useState(false)
   const [expandedExpense, setExpandedExpense] = useState<string | null>(null)
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null)
-  const [expenses, setExpenses] = useState<Expense[]>([])
-  const [friends, setFriends] = useState<Friend[]>([])
-  const [showAddFriendModal, setShowAddFriendModal] = useState(false)
-  const [friendEmail, setFriendEmail] = useState('')
-  const [isLoading, setIsLoading] = useState(true)
-  const [isAddingFriend, setIsAddingFriend] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
-  const [showSettings, setShowSettings] = useState(false)
   const [showDeleteAccount, setShowDeleteAccount] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState('')
   const [isDeleting, setIsDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [friendRequests, setFriendRequests] = useState<Array<{ id: string; user: { id: string; name: string; email: string; image?: string }; status: string; createdAt: string }>>([])
-  const [hasPassword, setHasPassword] = useState(false)
   const [showChangePassword, setShowChangePassword] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -64,129 +39,81 @@ export default function Dashboard() {
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null)
   const [friendExpenses, setFriendExpenses] = useState<Expense[]>([])
   const [isLoadingFriendExpenses, setIsLoadingFriendExpenses] = useState(false)
+  const [showAddFriendModal, setShowAddFriendModal] = useState(false)
+  const [friendEmail, setFriendEmail] = useState('')
+  const [showChangeName, setShowChangeName] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [isChangingName, setIsChangingName] = useState(false)
+  const [displayName, setDisplayName] = useState<string | null>(null)
+
+  const { expenses, isLoading, fetchExpenses } = useExpenses(
+    dateRange,
+    customStartDate,
+    customEndDate,
+    authenticated
+  )
+  const { friends, isAddingFriend, fetchFriends, handleAddFriend, handleUnfriend } = useFriends(authenticated)
+  const { friendRequests, fetchFriendRequests, handleAccept } = useFriendRequests(authenticated)
+  const { hasPassword } = useUserPassword(authenticated)
 
   useEffect(() => {
-    console.log('[Dashboard] Session status changed:', { status, hasSession: !!session, userEmail: session?.user?.email })
-    
     if (status === 'unauthenticated') {
-      console.log('[Dashboard] User not authenticated, redirecting to signin')
       router.push('/auth/signin')
-    } else if (status === 'authenticated') {
-      console.log('[Dashboard] User authenticated:', { 
-        id: session?.user?.id, 
-        email: session?.user?.email,
-        name: session?.user?.name 
-      })
+    } else if (authenticated && session?.user?.name) {
+      setDisplayName(session.user.name)
     }
-  }, [status, session, router])
-
-  useEffect(() => {
-    if (status === 'authenticated') {
-      fetchExpenses()
-      fetchFriends()
-      fetchFriendRequests()
-      checkHasPassword()
-    }
-  }, [status, dateRange, customStartDate, customEndDate])
-
-  const fetchExpenses = async () => {
-    try {
-      setIsLoading(true)
-      let url = `/api/expenses?dateRange=${dateRange}`
-      if (dateRange === 'custom' && customStartDate && customEndDate) {
-        url += `&startDate=${customStartDate}&endDate=${customEndDate}`
-      }
-      const response = await fetch(url)
-      if (response.ok) {
-        const data = await response.json()
-        setExpenses(data)
-      }
-    } catch (error) {
-      console.error('Failed to fetch expenses:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const fetchFriends = async () => {
-    try {
-      const response = await fetch('/api/friends')
-      if (response.ok) {
-        const data = await response.json()
-        setFriends(data)
-      }
-    } catch (error) {
-      console.error('Failed to fetch friends:', error)
-    }
-  }
-
-  const fetchFriendRequests = async () => {
-    try {
-      const response = await fetch('/api/friends/requests')
-      if (response.ok) {
-        const data = await response.json()
-        setFriendRequests(data)
-      }
-    } catch (error) {
-      console.error('Failed to fetch friend requests:', error)
-    }
-  }
-
-  const checkHasPassword = async () => {
-    try {
-      const response = await fetch('/api/users/password')
-      if (response.ok) {
-        const data = await response.json()
-        setHasPassword(data.hasPassword)
-      }
-    } catch (error) {
-      console.error('Failed to check password:', error)
-    }
-  }
+  }, [status, session, router, authenticated])
 
   const handleAcceptFriendRequest = async (requestId: string) => {
-    try {
-      const response = await fetch('/api/friends/requests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requestId }),
-      })
-
-      if (response.ok) {
-        await fetchFriendRequests()
-        await fetchFriends()
-        setError(null)
-      } else {
-        const errorData = await response.json()
-        setError(errorData.error || 'Failed to accept friend request')
-      }
-    } catch (error) {
-      setError('Failed to accept friend request')
-    }
+    const result = await handleAccept(requestId)
+    if (result.ok) setError(null)
+    else setError(result.error ?? 'Failed to accept friend request')
   }
 
   const handleFriendClick = async (friendId: string, friendName: string) => {
     setSelectedFriendId(friendId)
     setIsLoadingFriendExpenses(true)
-    
     try {
-      const response = await fetch('/api/expenses?dateRange=all')
-      if (response.ok) {
-        const data = await response.json()
-        const expensesWithFriend = data.filter((expense: Expense) => 
-          expense.paidBy === friendName || expense.splitWith.includes(friendName)
-        )
-        setFriendExpenses(expensesWithFriend.sort((a, b) => {
-          const dateA = new Date(a.date).getTime()
-          const dateB = new Date(b.date).getTime()
-          return dateB - dateA
-        }).slice(0, 10)) // Show most recent 10
-      }
-    } catch (error) {
-      console.error('Failed to fetch friend expenses:', error)
+      const data = await getExpenses({ dateRange: 'all' })
+      const withFriend = data.filter(
+        (e) => e.paidBy === friendName || e.splitWith.includes(friendName)
+      )
+      setFriendExpenses(
+        withFriend
+          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+          .slice(0, 10)
+      )
+    } catch {
       setFriendExpenses([])
     } finally {
       setIsLoadingFriendExpenses(false)
+    }
+  }
+
+  const handleChangeName = async () => {
+    if (!newName.trim()) {
+      setError('Name cannot be empty')
+      return
+    }
+    if (newName.trim() === session?.user?.name) {
+      setShowChangeName(false)
+      setNewName('')
+      return
+    }
+    try {
+      setIsChangingName(true)
+      setError(null)
+      await updateMe({ name: newName.trim() })
+      setDisplayName(newName.trim())
+      setShowChangeName(false)
+      setNewName('')
+      setError(null)
+      if (updateSession) await updateSession()
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to change name')
+    } finally {
+      setIsChangingName(false)
     }
   }
 
@@ -195,33 +122,21 @@ export default function Dashboard() {
       setError('New passwords do not match')
       return
     }
-
     if (newPassword.length < 8) {
       setError('Password must be at least 8 characters')
       return
     }
-
     try {
       setIsChangingPassword(true)
       setError(null)
-      const response = await fetch('/api/users/password', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ currentPassword, newPassword }),
-      })
-
-      if (response.ok) {
-        setShowChangePassword(false)
-        setCurrentPassword('')
-        setNewPassword('')
-        setConfirmNewPassword('')
-        setError(null)
-      } else {
-        const errorData = await response.json()
-        setError(errorData.error || 'Failed to change password')
-      }
-    } catch (error) {
-      setError('Failed to change password')
+      await updatePassword({ currentPassword, newPassword })
+      setShowChangePassword(false)
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmNewPassword('')
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to change password')
     } finally {
       setIsChangingPassword(false)
     }
@@ -273,51 +188,65 @@ export default function Dashboard() {
 
   const allExpenses = groupExpenses(expenses)
 
-  const handleAddFriend = async () => {
+  // Calculate spending by category
+  const spendingByCategory = expenses
+    .filter(e => e.type === 'expense' && e.category)
+    .reduce((acc, e) => {
+      const cat = e.category || 'uncategorized'
+      acc[cat] = (acc[cat] || 0) + e.amount
+      return acc
+    }, {} as Record<string, number>)
+
+  const categoryData = Object.entries(spendingByCategory)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value)
+
+  // Calculate spending trajectory (by day)
+  const spendingByDate = expenses
+    .filter(e => e.type === 'expense')
+    .reduce((acc, e) => {
+      const date = e.date
+      acc[date] = (acc[date] || 0) + e.amount
+      return acc
+    }, {} as Record<string, number>)
+
+  const trajectoryData = Object.entries(spendingByDate)
+    .map(([date, amount]) => ({ date, amount }))
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .slice(-30) // Last 30 days
+
+  // Calculate monthly spending
+  const monthlySpending = expenses
+    .filter(e => e.type === 'expense')
+    .reduce((acc, e) => {
+      const month = new Date(e.date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+      acc[month] = (acc[month] || 0) + e.amount
+      return acc
+    }, {} as Record<string, number>)
+
+  const monthlyData = Object.entries(monthlySpending)
+    .map(([month, amount]) => ({ month, amount }))
+    .sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime())
+    .slice(-6) // Last 6 months
+
+  const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00ff00', '#0088fe', '#ff00ff', '#ff0000', '#00ffff', '#ffff00']
+
+  const onAddFriend = async () => {
     if (!friendEmail.trim()) return
-
-    try {
-      setIsAddingFriend(true)
-      setError(null)
-      const response = await fetch('/api/friends', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: friendEmail }),
-      })
-
-      if (response.ok) {
-        await fetchFriendRequests()
-        setFriendEmail('')
-        setShowAddFriendModal(false)
-        setError(null)
-      } else {
-        const errorData = await response.json()
-        setError(errorData.error || 'Failed to add friend')
-      }
-    } catch (error) {
-      setError('Failed to add friend')
-    } finally {
-      setIsAddingFriend(false)
+    setError(null)
+    const result = await handleAddFriend(friendEmail)
+    if (result.ok) {
+      setFriendEmail('')
+      setShowAddFriendModal(false)
+    } else {
+      setError(result.error ?? 'Failed to add friend')
     }
   }
 
-  const handleUnfriend = async (friendId: string) => {
-    try {
-      setError(null)
-      const response = await fetch(`/api/friends/${friendId}`, {
-        method: 'DELETE',
-      })
-
-      if (response.ok) {
-        await fetchFriends()
-        setError(null)
-      } else {
-        const errorData = await response.json()
-        setError(errorData.error || 'Failed to remove friend')
-      }
-    } catch (error) {
-      setError('Failed to remove friend')
-    }
+  const onUnfriend = async (friendId: string) => {
+    setError(null)
+    const result = await handleUnfriend(friendId)
+    if (!result.ok) setError(result.error ?? 'Failed to remove friend')
   }
 
   const toggleExpense = (expenseId: string) => {
@@ -334,40 +263,30 @@ export default function Dashboard() {
       setError('please type "delete" to confirm')
       return
     }
-
     setIsDeleting(true)
     setError(null)
-
     try {
-      const response = await fetch('/api/users/delete', {
-        method: 'DELETE',
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to delete account')
-      }
-
+      await deleteAccount()
       await signOut({ callbackUrl: '/auth/signin' })
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to delete account')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete account')
       setIsDeleting(false)
     }
   }
 
   const calculateGroupBreakdown = (group: TransactionGroup) => {
     const balances: Record<string, { paid: number; owes: number; share: number }> = {}
-    
+
     group.participants.forEach(p => {
       balances[p] = { paid: 0, owes: 0, share: 0 }
     })
 
     group.expenses.forEach(expense => {
       const perPersonShare = expense.amount / expense.splitWith.length
-      
+
       // Track who paid
       balances[expense.paidBy].paid += expense.amount
-      
+
       // Track who owes
       expense.splitWith.forEach(person => {
         balances[person].share += perPersonShare
@@ -392,78 +311,131 @@ export default function Dashboard() {
       </Link>
 
       <div className="mx-auto max-w-4xl px-6 py-12">
-        {/* Error Message */}
-        {error && (
-          <div className="mb-6 p-4 border border-red-500/50 bg-red-500/10 text-red-500 rounded">
-            <p className="text-sm font-medium">{error}</p>
-            <button
-              onClick={() => setError(null)}
-              className="mt-2 text-xs text-red-500/70 hover:text-red-500"
-            >
-              dismiss
-            </button>
-          </div>
-        )}
+        <ErrorBanner error={error} onDismiss={() => setError(null)} />
 
         <div className="mb-12">
           <h1 className="text-4xl font-bold tracking-tight text-background md:text-5xl mb-2">dashboard</h1>
           <p className="text-sm text-background/50 font-medium">your spending overview</p>
         </div>
 
-        {/* Date Range Filter */}
-        <div className="mb-12">
-          <div className="flex items-center gap-4 flex-wrap">
-            <select
-              value={dateRange}
-              onChange={(e) => {
-                setDateRange(e.target.value)
-                if (e.target.value !== 'custom') {
-                  setShowCustomDateRange(false)
-                  setCustomStartDate('')
-                  setCustomEndDate('')
-                } else {
-                  setShowCustomDateRange(true)
-                }
-              }}
-              className="bg-foreground text-sm text-background border-b-2 border-background/30 pb-2 outline-none focus:border-background transition-colors cursor-pointer"
-              style={{
-                colorScheme: 'dark',
-              }}
-            >
-              <option value="thisMonth" className="bg-foreground text-background">this month</option>
-              <option value="lastMonth" className="bg-foreground text-background">last month</option>
-              <option value="thisYear" className="bg-foreground text-background">this year</option>
-              <option value="all" className="bg-foreground text-background">all time</option>
-              <option value="custom" className="bg-foreground text-background">custom range</option>
-            </select>
-            
-            {showCustomDateRange && (
-              <div className="flex items-center gap-2">
-                <input
-                  type="date"
-                  value={customStartDate}
-                  onChange={(e) => setCustomStartDate(e.target.value)}
-                  className="bg-foreground text-sm text-background border-b-2 border-background/30 pb-2 outline-none focus:border-background"
-                  style={{ colorScheme: 'dark' }}
-                />
-                <span className="text-background/50">to</span>
-                <input
-                  type="date"
-                  value={customEndDate}
-                  onChange={(e) => setCustomEndDate(e.target.value)}
-                  className="bg-foreground text-sm text-background border-b-2 border-background/30 pb-2 outline-none focus:border-background"
-                  style={{ colorScheme: 'dark' }}
-                />
-              </div>
-            )}
-          </div>
-        </div>
+        <DateRangeFilter
+          dateRange={dateRange}
+          onDateRangeChange={setDateRange}
+          customStartDate={customStartDate}
+          customEndDate={customEndDate}
+          onCustomStartDateChange={setCustomStartDate}
+          onCustomEndDateChange={setCustomEndDate}
+          showCustom={showCustomDateRange}
+          onShowCustomChange={setShowCustomDateRange}
+        />
 
         {/* Total Spent */}
         <div className="mb-16 border-b border-background/20 pb-8">
           <p className="text-sm text-background/50 font-medium mb-3">total spent</p>
           <p className="text-5xl md:text-6xl font-bold text-background">₱{totalSpent.toFixed(2)}</p>
         </div>
+
+        {/* Charts Section */}
+        {expenses.length > 0 && (
+          <div className="mb-16 space-y-12">
+            {/* Spending by Category */}
+            {categoryData.length > 0 && (
+              <div>
+                <h2 className="text-2xl font-bold text-background mb-6">spending by category</h2>
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={categoryData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {categoryData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value: number) => `₱${value.toFixed(2)}`}
+                        contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #333', borderRadius: '4px' }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+
+            {/* Spending Trajectory */}
+            {trajectoryData.length > 0 && (
+              <div>
+                <h2 className="text-2xl font-bold text-background mb-6">spending trajectory</h2>
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={trajectoryData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                      <XAxis
+                        dataKey="date"
+                        stroke="#888"
+                        tick={{ fill: '#888' }}
+                        tickFormatter={(date) => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      />
+                      <YAxis
+                        stroke="#888"
+                        tick={{ fill: '#888' }}
+                        tickFormatter={(value) => `₱${value}`}
+                      />
+                      <Tooltip
+                        formatter={(value: number) => `₱${value.toFixed(2)}`}
+                        labelFormatter={(date) => new Date(date).toLocaleDateString()}
+                        contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #333', borderRadius: '4px' }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="amount"
+                        stroke="#8884d8"
+                        strokeWidth={2}
+                        dot={{ fill: '#8884d8', r: 4 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+
+            {/* Monthly Spending Comparison */}
+            {monthlyData.length > 0 && (
+              <div>
+                <h2 className="text-2xl font-bold text-background mb-6">monthly spending</h2>
+                <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={monthlyData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                      <XAxis
+                        dataKey="month"
+                        stroke="#888"
+                        tick={{ fill: '#888' }}
+                      />
+                      <YAxis
+                        stroke="#888"
+                        tick={{ fill: '#888' }}
+                        tickFormatter={(value) => `₱${value}`}
+                      />
+                      <Tooltip
+                        formatter={(value: number) => `₱${value.toFixed(2)}`}
+                        contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #333', borderRadius: '4px' }}
+                      />
+                      <Bar dataKey="amount" fill="#82ca9d" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Recent Expenses */}
         <div className="mb-16">
@@ -587,7 +559,7 @@ export default function Dashboard() {
                                 ))}
                               </div>
                             </div>
-                            
+
                             <div>
                               <h3 className="text-base font-bold text-background mb-3">breakdown</h3>
                               <div className="space-y-2">
@@ -725,7 +697,7 @@ export default function Dashboard() {
                     <p className="text-sm text-background/50">{friend.email}</p>
                   </div>
                   <button
-                    onClick={() => handleUnfriend(friend.id)}
+                    onClick={() => onUnfriend(friend.id)}
                     className="text-sm text-background/70 transition-colors hover:text-background"
                   >
                     unfriend
@@ -736,20 +708,65 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Settings Section - Expandable */}
+        {/* Settings Section */}
         <div className="mb-16">
-          <div className="flex items-center justify-between mb-8">
-            <h2 className="text-2xl font-bold text-background">settings</h2>
-            <button
-              onClick={() => setShowSettings(!showSettings)}
-              className="text-sm text-background/70 transition-colors hover:text-background"
-            >
-              {showSettings ? 'hide' : 'show →'}
-            </button>
-          </div>
-
-          {showSettings && (
+          <h2 className="text-2xl font-bold text-background mb-8">settings</h2>
+          <div className="space-y-12">
             <div className="space-y-12">
+              {/* Change Name */}
+              <div>
+                <div className="flex items-center gap-2 mb-6">
+                  <h3 className="text-xl font-bold text-background">change name</h3>
+                </div>
+
+                {!showChangeName ? (
+                  <div className="space-y-3">
+                    <p className="text-sm text-background/70">current name: {displayName || session?.user?.name || 'N/A'}</p>
+                    <button
+                      onClick={() => {
+                        setNewName(displayName || session?.user?.name || '')
+                        setShowChangeName(true)
+                      }}
+                      className="border-2 border-background/30 py-3 px-6 text-base font-medium text-background transition-colors hover:border-background"
+                    >
+                      change name
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-6 max-w-md">
+                    <div>
+                      <h4 className="text-sm font-medium text-background/50 mb-2">new name</h4>
+                      <input
+                        type="text"
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        placeholder="Enter your name"
+                        className="w-full border-b-2 border-background/30 bg-transparent pb-3 text-lg text-background placeholder:text-background/40 focus:border-background focus:outline-none"
+                      />
+                    </div>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => {
+                          setShowChangeName(false)
+                          setNewName('')
+                          setError(null)
+                        }}
+                        className="flex-1 border-2 border-background/30 py-3 text-base font-medium text-background/70 transition-colors hover:border-background hover:text-background"
+                      >
+                        cancel
+                      </button>
+                      <button
+                        onClick={handleChangeName}
+                        disabled={isChangingName}
+                        className="flex-1 border-2 border-background py-3 text-base font-medium text-background transition-colors hover:bg-background hover:text-foreground disabled:opacity-50"
+                      >
+                        {isChangingName ? 'changing...' : 'change name'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Change Password */}
               {hasPassword && (
                 <div>
@@ -869,99 +886,100 @@ export default function Dashboard() {
                 )}
               </div>
             </div>
-          )}
+          </div>
         </div>
-      </div>
 
-      {/* Add Friend Modal */}
-      {showAddFriendModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setShowAddFriendModal(false)}>
-          <div className="w-full max-w-lg border border-background bg-foreground p-8 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-2xl font-bold text-background mb-6">add friend</h2>
-            <div className="space-y-6">
-              <div>
-                <input
-                  type="email"
-                  placeholder="friend@example.com"
-                  value={friendEmail}
-                  onChange={(e) => setFriendEmail(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleAddFriend()}
-                  className="w-full border-b-2 border-background/30 bg-transparent pb-3 text-lg text-background placeholder:text-background/40 focus:border-background focus:outline-none"
-                />
+        {/* Add Friend Modal */}
+        {showAddFriendModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setShowAddFriendModal(false)}>
+            <div className="w-full max-w-lg border border-background bg-foreground p-8 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <h2 className="text-2xl font-bold text-background mb-6">add friend</h2>
+              <div className="space-y-6">
+                <div>
+                  <input
+                    type="email"
+                    placeholder="friend@example.com"
+                    value={friendEmail}
+                    onChange={(e) => setFriendEmail(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && onAddFriend()}
+                    className="w-full border-b-2 border-background/30 bg-transparent pb-3 text-lg text-background placeholder:text-background/40 focus:border-background focus:outline-none"
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowAddFriendModal(false)
+                      setFriendEmail('')
+                    }}
+                    className="flex-1 border-2 border-background/30 py-3 text-base font-medium text-background/70 transition-colors hover:border-background hover:text-background"
+                  >
+                    cancel
+                  </button>
+                  <button
+                    onClick={onAddFriend}
+                    disabled={isAddingFriend}
+                    className="flex-1 border-2 border-background py-3 text-base font-medium text-background transition-colors hover:bg-background hover:text-foreground disabled:opacity-50"
+                  >
+                    {isAddingFriend ? 'adding...' : 'add'}
+                  </button>
+                </div>
               </div>
-              <div className="flex gap-3">
+            </div>
+          </div>
+        )}
+
+        {/* Friend Expenses Modal */}
+        {selectedFriendId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => {
+            setSelectedFriendId(null)
+            setFriendExpenses([])
+          }}>
+            <div className="w-full max-w-2xl border border-background bg-foreground p-8 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-background">
+                  {friends.find(f => f.id === selectedFriendId)?.name || 'Friend'}
+                </h2>
                 <button
                   onClick={() => {
-                    setShowAddFriendModal(false)
-                    setFriendEmail('')
+                    setSelectedFriendId(null)
+                    setFriendExpenses([])
                   }}
-                  className="flex-1 border-2 border-background/30 py-3 text-base font-medium text-background/70 transition-colors hover:border-background hover:text-background"
+                  className="text-background/40 hover:text-background transition-colors"
                 >
-                  cancel
-                </button>
-                <button
-                  onClick={handleAddFriend}
-                  disabled={isAddingFriend}
-                  className="flex-1 border-2 border-background py-3 text-base font-medium text-background transition-colors hover:bg-background hover:text-foreground disabled:opacity-50"
-                >
-                  {isAddingFriend ? 'adding...' : 'add'}
+                  <X className="h-5 w-5" />
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Friend Expenses Modal */}
-      {selectedFriendId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => {
-          setSelectedFriendId(null)
-          setFriendExpenses([])
-        }}>
-          <div className="w-full max-w-2xl border border-background bg-foreground p-8 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-background">
-                {friends.find(f => f.id === selectedFriendId)?.name || 'Friend'}
-              </h2>
-              <button
-                onClick={() => {
-                  setSelectedFriendId(null)
-                  setFriendExpenses([])
-                }}
-                className="text-background/40 hover:text-background transition-colors"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            
-            <h3 className="text-lg font-bold text-background mb-4">recent purchases</h3>
-            
-            {isLoadingFriendExpenses ? (
-              <p className="text-background/50 text-sm">loading...</p>
-            ) : friendExpenses.length === 0 ? (
-              <p className="text-background/50 text-sm">no purchases yet</p>
-            ) : (
-              <div className="space-y-4">
-                {friendExpenses.map(expense => (
-                  <div key={expense.id} className="border-b border-background/20 pb-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <p className="text-lg font-bold text-background">{expense.name}</p>
-                        <p className="text-sm text-background/50 mt-1">
-                          {expense.date} • ₱{expense.amount.toFixed(2)}
-                        </p>
-                        <p className="text-xs text-background/40 mt-1">
-                          {expense.paidBy === friends.find(f => f.id === selectedFriendId)?.name ? 'paid by them' : 'split with them'}
-                        </p>
+              <h3 className="text-lg font-bold text-background mb-4">recent purchases</h3>
+
+              {isLoadingFriendExpenses ? (
+                <p className="text-background/50 text-sm">loading...</p>
+              ) : friendExpenses.length === 0 ? (
+                <p className="text-background/50 text-sm">no purchases yet</p>
+              ) : (
+                <div className="space-y-4">
+                  {friendExpenses.map(expense => (
+                    <div key={expense.id} className="border-b border-background/20 pb-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <p className="text-lg font-bold text-background">{expense.name}</p>
+                          <p className="text-sm text-background/50 mt-1">
+                            {expense.date} • ₱{expense.amount.toFixed(2)}
+                          </p>
+                          <p className="text-xs text-background/40 mt-1">
+                            {expense.paidBy === friends.find(f => f.id === selectedFriendId)?.name ? 'paid by them' : 'split with them'}
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }
+

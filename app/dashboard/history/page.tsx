@@ -1,43 +1,31 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
-
-interface Expense {
-  id: string
-  name: string
-  amount: number
-  date: string
-  budget?: string
-  paidBy: string
-  splitWith: string[]
-  type: 'expense' | 'settlement'
-}
+import { getExpenses } from '@/lib/api'
+import type { Expense } from '@/lib/types'
 
 export default function HistoryPage() {
-  const [dateRange, setDateRange] = useState('all')
+  const [dateRange, setDateRange] = useState<'thisMonth' | 'lastMonth' | 'thisYear' | 'all'>('all')
   const [expandedExpense, setExpandedExpense] = useState<string | null>(null)
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  useEffect(() => {
-    fetchExpenses()
-  }, [dateRange])
-
-  const fetchExpenses = async () => {
+  const fetchExpenses = useCallback(async () => {
     try {
       setIsLoading(true)
-      const response = await fetch(`/api/expenses?dateRange=${dateRange}`)
-      if (response.ok) {
-        const data = await response.json()
-        setExpenses(data)
-      }
-    } catch (error) {
-      console.error('Failed to fetch expenses:', error)
+      const data = await getExpenses({ dateRange })
+      setExpenses(data)
+    } catch {
+      setExpenses([])
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [dateRange])
+
+  useEffect(() => {
+    fetchExpenses()
+  }, [fetchExpenses])
 
   const totalSpent = expenses
     .filter(e => e.type === 'expense')

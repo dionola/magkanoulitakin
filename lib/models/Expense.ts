@@ -6,6 +6,7 @@ export interface IExpense extends mongoose.Document {
   amount: number
   date: Date
   budget?: string
+  category?: string
   paidBy: string
   splitWith: string[]
   type: 'expense' | 'settlement'
@@ -37,6 +38,9 @@ const ExpenseSchema = new Schema<IExpense>(
       default: Date.now,
     },
     budget: {
+      type: String,
+    },
+    category: {
       type: String,
     },
     paidBy: {
