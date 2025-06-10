@@ -1,51 +1,125 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { Trash2, Plus, Moon, Sun, LogOut, LogIn, HelpCircle } from 'lucide-react'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
-import { useSession, signOut } from 'next-auth/react'
+import { Trash2, LayoutDashboard, ChevronDown } from 'lucide-react'
+import { useSession } from 'next-auth/react'
 import { calculateSettlements, getExpenseTotals } from '@/lib/utils/settlements'
+import { createExpense, deleteExpense, getFriends, updateExpense } from '@/lib/api'
 import type { Person, CalculatorExpense } from '@/lib/types'
+import { SiteHeader } from '@/components/layout/site-header'
+import { CATEGORIES, getCategoryIcon } from '@/lib/utils/categories'
+
+const initialPerson = { id: '1', name: 'You' }
+const CALCULATOR_STORAGE_KEY = 'budgtr-calculator-state'
+
+function isPersistedExpenseId(id: string | null): id is string {
+  return !!id && /^[0-9a-fA-F]{24}$/.test(id)
+}
+
+type SavedCalculatorState = {
+  people: Person[]
+  expenses: CalculatorExpense[]
+  currency: string
+  currencyCode: string
+}
 
 export default function Calculator() {
-  const initialPeople = [
-    { id: '1', name: 'Person 1' },
-    { id: '2', name: 'Person 2' },
-  ]
-  const [people, setPeople] = useState<Person[]>(initialPeople)
+  const [people, setPeople] = useState<Person[]>([initialPerson])
   const [expenses, setExpenses] = useState<CalculatorExpense[]>([])
   const [newPersonName, setNewPersonName] = useState('')
   const [newExpenseName, setNewExpenseName] = useState('')
   const [newExpenseAmount, setNewExpenseAmount] = useState('')
-  const [newExpensePaidBy, setNewExpensePaidBy] = useState(initialPeople[0]?.id || '')
-  const [newExpenseSplitWith, setNewExpenseSplitWith] = useState<string[]>(initialPeople.map(p => p.id))
+  const [newExpenseCategory, setNewExpenseCategory] = useState('')
+  const [categorySuggestionsOpen, setCategorySuggestionsOpen] = useState(false)
+  const [newExpensePaidBy, setNewExpensePaidBy] = useState(initialPerson.id)
+  const [formErrors, setFormErrors] = useState<{ name?: string; amount?: string; splitWith?: string }>({})
+  const [newExpenseSplitWith, setNewExpenseSplitWith] = useState<string[]>([initialPerson.id])
+  const [paidByDropdownOpen, setPaidByDropdownOpen] = useState(false)
+  const [currencyDropdownOpen, setCurrencyDropdownOpen] = useState(false)
   const [currency, setCurrency] = useState('₱')
   const [currencyCode, setCurrencyCode] = useState('PHP')
   const [splitDropdownOpen, setSplitDropdownOpen] = useState(false)
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null)
-  const [editValues, setEditValues] = useState<{ name: string; amount: string }>({ name: '', amount: '' })
   const { data: session, status } = useSession()
   const isLoggedIn = status === 'authenticated' && !!session
+  const [saveError, setSaveError] = useState('')
+  const [isSavingExpense, setIsSavingExpense] = useState(false)
   const [editingPersonId, setEditingPersonId] = useState<string | null>(null)
   const [editingPersonName, setEditingPersonName] = useState('')
-  const [showReceiptScanner, setShowReceiptScanner] = useState(false)
-  const [receiptExpenses, setReceiptExpenses] = useState<Array<{ id: string; name: string; amount: number; paidByPersonId: string | null }>>([])
-  const [darkMode, setDarkMode] = useState(true)
-  const [showAddFriendsModal, setShowAddFriendsModal] = useState(false)
-  const [receiptDropdownOpen, setReceiptDropdownOpen] = useState<string | null>(null)
-  const ENABLE_RECEIPT_SCANNER = false
+  const [friends, setFriends] = useState<{ id: string; name: string }[]>([])
+  const [friendSuggestionsOpen, setFriendSuggestionsOpen] = useState(false)
+  const addPersonRef = useRef<HTMLDivElement>(null)
 
-  // Handle dark mode
+  const currencyRef = useRef<HTMLDivElement>(null)
+  const paidByRef = useRef<HTMLDivElement>(null)
+  const splitRef = useRef<HTMLDivElement>(null)
+  const categoryRef = useRef<HTMLDivElement>(null)
+
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      if (darkMode) {
-        document.documentElement.classList.add('dark')
-      } else {
-        document.documentElement.classList.remove('dark')
-      }
+    const handler = (e: MouseEvent) => {
+      if (currencyRef.current && !currencyRef.current.contains(e.target as Node)) setCurrencyDropdownOpen(false)
+      if (paidByRef.current && !paidByRef.current.contains(e.target as Node)) setPaidByDropdownOpen(false)
+      if (splitRef.current && !splitRef.current.contains(e.target as Node)) setSplitDropdownOpen(false)
+      if (addPersonRef.current && !addPersonRef.current.contains(e.target as Node)) setFriendSuggestionsOpen(false)
+      if (categoryRef.current && !categoryRef.current.contains(e.target as Node)) setCategorySuggestionsOpen(false)
     }
-  }, [darkMode])
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  useEffect(() => {
+    const savedState = window.localStorage.getItem(CALCULATOR_STORAGE_KEY)
+    if (!savedState) return
+
+    try {
+      const parsed = JSON.parse(savedState) as Partial<SavedCalculatorState>
+
+      if (Array.isArray(parsed.people) && parsed.people.length > 0) {
+        setPeople(parsed.people)
+      }
+
+      if (Array.isArray(parsed.expenses)) {
+        setExpenses(parsed.expenses)
+      }
+
+      if (typeof parsed.currency === 'string') {
+        setCurrency(parsed.currency)
+      }
+
+      if (typeof parsed.currencyCode === 'string') {
+        setCurrencyCode(parsed.currencyCode)
+      }
+    } catch {
+      window.localStorage.removeItem(CALCULATOR_STORAGE_KEY)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (session?.user?.name) {
+      setPeople(prev => prev.map(p => p.id === initialPerson.id ? { ...p, name: session.user!.name! } : p))
+    }
+  }, [session?.user?.name])
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      CALCULATOR_STORAGE_KEY,
+      JSON.stringify({
+        people,
+        expenses,
+        currency,
+        currencyCode,
+      } satisfies SavedCalculatorState)
+    )
+  }, [people, expenses, currency, currencyCode])
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      getFriends().then(data => setFriends(data.map(f => ({ id: f.id, name: f.name })))).catch(() => {})
+    } else {
+      setFriends([])
+    }
+  }, [isLoggedIn])
 
   const addPerson = () => {
     if (newPersonName.trim()) {
@@ -71,10 +145,14 @@ export default function Calculator() {
     setEditingPersonId(null)
   }
 
-  const addExpense = () => {
-    if (!newExpenseName.trim() || !newExpenseAmount || !newExpensePaidBy || newExpenseSplitWith.length === 0) {
-      return
-    }
+  const addExpense = async () => {
+    const errors: typeof formErrors = {}
+    if (!newExpenseName.trim()) errors.name = 'name is required'
+    if (!newExpenseAmount || parseFloat(newExpenseAmount) <= 0) errors.amount = 'enter a valid amount'
+    if (newExpenseSplitWith.length === 0) errors.splitWith = 'select at least one person'
+    if (Object.keys(errors).length > 0) { setFormErrors(errors); return }
+    setFormErrors({})
+    setSaveError('')
 
     const amount = parseFloat(newExpenseAmount)
     const splitData: Record<string, number> = {}
@@ -85,20 +163,71 @@ export default function Calculator() {
       splitData[personId] = perPerson
     })
 
+    const localExpense: CalculatorExpense = {
+      id: editingExpenseId || Date.now().toString(),
+      name: newExpenseName.trim(),
+      amount,
+      category: newExpenseCategory || undefined,
+      paidBy: newExpensePaidBy,
+      splitWith: newExpenseSplitWith,
+      splitType: 'equal',
+      splitData,
+    }
+
+    let savedExpenseId = localExpense.id
+
+    if (isLoggedIn) {
+      const paidByName = getPersonName(newExpensePaidBy)
+      const splitWithNames = newExpenseSplitWith.map(getPersonName)
+      const sharedParticipantIds = people
+        .map(person => person.id)
+        .filter(personId => isPersistedExpenseId(personId) && personId !== initialPerson.id)
+
+      setIsSavingExpense(true)
+      try {
+        if (isPersistedExpenseId(editingExpenseId)) {
+          await updateExpense(editingExpenseId, {
+            name: localExpense.name,
+            amount: localExpense.amount,
+            date: new Date().toISOString().split('T')[0],
+            paidBy: paidByName,
+            splitWith: splitWithNames,
+            category: localExpense.category,
+            cascadeGroup: true,
+          })
+          savedExpenseId = editingExpenseId
+        } else {
+          const savedExpense = await createExpense({
+            name: localExpense.name,
+            amount: localExpense.amount,
+            date: new Date().toISOString().split('T')[0],
+            paidBy: paidByName,
+            splitWith: splitWithNames,
+            category: localExpense.category,
+            sharedParticipantIds,
+          })
+          savedExpenseId = savedExpense.id
+        }
+      } catch (err) {
+        setSaveError(err instanceof Error ? err.message : 'failed to save expense')
+        setIsSavingExpense(false)
+        return
+      } finally {
+        setIsSavingExpense(false)
+      }
+    }
+
     setExpenses([
       ...expenses,
       {
-        id: Date.now().toString(),
-        name: newExpenseName,
-        amount,
-        paidBy: newExpensePaidBy,
-        splitWith: newExpenseSplitWith,
-        splitType: 'equal',
-        splitData,
+        ...localExpense,
+        id: savedExpenseId,
       },
     ])
+    setEditingExpenseId(null)
     setNewExpenseName('')
     setNewExpenseAmount('')
+    setNewExpenseCategory('')
     setNewExpenseSplitWith(people.map(p => p.id))
   }
 
@@ -114,82 +243,32 @@ export default function Calculator() {
     setNewExpenseSplitWith(people.map(p => p.id))
   }
 
-  const removeExpense = (id: string) => {
+  const removeExpense = async (id: string) => {
+    setSaveError('')
+    if (isLoggedIn && isPersistedExpenseId(id)) {
+      try {
+        await deleteExpense(id, { cascadeGroup: true })
+      } catch (err) {
+        setSaveError(err instanceof Error ? err.message : 'failed to delete expense')
+        return
+      }
+    }
     setExpenses(expenses.filter(e => e.id !== id))
   }
 
-  const startEditExpense = (expense: Expense) => {
+  const startEditExpense = (expense: CalculatorExpense) => {
     setEditingExpenseId(expense.id)
-    setEditValues({ name: expense.name, amount: expense.amount.toString() })
-  }
-
-  const saveEditExpense = (id: string) => {
-    if (!editValues.name.trim() || !editValues.amount) return
-
-    setExpenses(expenses.map(e =>
-      e.id === id
-        ? { ...e, name: editValues.name, amount: parseFloat(editValues.amount) }
-        : e
-    ))
-    setEditingExpenseId(null)
+    setNewExpenseName(expense.name)
+    setNewExpenseAmount(expense.amount.toString())
+    setNewExpenseCategory(expense.category || '')
+    setNewExpensePaidBy(expense.paidBy)
+    setNewExpenseSplitWith(expense.splitWith)
+    setExpenses(prev => prev.filter(e => e.id !== expense.id))
+    setFormErrors({})
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const expenseTotals = getExpenseTotals(people, expenses)
-
-  const handleReceiptUpload = () => {
-    const dummyExpenses = [
-      { id: '1', name: 'Burger Meal', amount: 250 },
-      { id: '2', name: 'Grilled Fish', amount: 450 },
-      { id: '3', name: 'Soft Drinks (2x)', amount: 150 },
-      { id: '4', name: 'Dessert Platter', amount: 200 },
-    ]
-    setReceiptExpenses(dummyExpenses.map(e => ({ ...e, paidByPersonId: null })))
-    setShowReceiptScanner(true)
-  }
-
-  const setReceiptExpensePaidBy = (expenseId: string, personId: string) => {
-    setReceiptExpenses(receiptExpenses.map(e =>
-      e.id === expenseId ? { ...e, paidByPersonId: personId } : e
-    ))
-  }
-
-  const editReceiptExpense = (expenseId: string, name: string, amount: number) => {
-    setReceiptExpenses(receiptExpenses.map(e =>
-      e.id === expenseId ? { ...e, name, amount } : e
-    ))
-  }
-
-  const removeReceiptExpense = (expenseId: string) => {
-    setReceiptExpenses(receiptExpenses.filter(e => e.id !== expenseId))
-  }
-
-  const confirmReceiptExpenses = () => {
-    if (receiptExpenses.some(e => !e.paidByPersonId)) {
-      alert('Please select who paid for each item')
-      return
-    }
-
-    const newExpenses = receiptExpenses.map(item => ({
-      id: Date.now().toString() + Math.random(),
-      name: item.name,
-      amount: item.amount,
-      paidBy: item.paidByPersonId!,
-      splitWith: newExpenseSplitWith,
-      splitType: 'equal' as const,
-      splitData: {},
-    }))
-
-    setExpenses([...expenses, ...newExpenses])
-    setShowReceiptScanner(false)
-    setReceiptExpenses([])
-  }
-
-  const mockFriends = [
-    { id: 'f1', name: 'Alice Johnson' },
-    { id: 'f2', name: 'Bob Smith' },
-    { id: 'f3', name: 'Charlie Davis' },
-  ]
-
   const settlements = calculateSettlements(people, expenses)
 
   const getPersonName = (id: string) => {
@@ -198,90 +277,34 @@ export default function Calculator() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* Header */}
-      <div className="border-b border-border/20 p-6 md:p-8">
-        <div className="mx-auto max-w-6xl flex items-center justify-between">
-          <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Split</h1>
-          <div className="flex items-center gap-4">
-            <select
-              value={currencyCode}
-              onChange={(e) => {
-                const code = e.target.value
-                setCurrencyCode(code)
-                const symbols: Record<string, string> = {
-                  'PHP': '₱',
-                  'USD': '$',
-                  'EUR': '€',
-                  'GBP': '£',
-                  'JPY': '¥',
-                  'INR': '₹',
-                }
-                setCurrency(symbols[code] || code)
-              }}
-              className="bg-transparent text-base font-bold outline-none"
-            >
-              <option value="PHP">₱ PHP</option>
-              <option value="USD">$ USD</option>
-              <option value="EUR">€ EUR</option>
-              <option value="GBP">£ GBP</option>
-              <option value="JPY">¥ JPY</option>
-              <option value="INR">₹ INR</option>
-            </select>
-            <div className="flex items-center gap-4 ml-4 pl-4 border-l border-border/20">
-              <button
-                onClick={() => setDarkMode(!darkMode)}
-                className="font-bold text-base hover:opacity-70 transition p-2"
-                title="Toggle dark mode"
-              >
-                {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-              </button>
-
-              {isLoggedIn && (
-                <>
-                  <button
-                    onClick={() => setShowAddFriendsModal(true)}
-                    className="font-bold text-base hover:opacity-70 transition"
-                  >
-                    Add Friends
-                  </button>
-                  <Link
-                    href="/dashboard"
-                    className="font-bold text-base hover:opacity-70 transition"
-                  >
-                    Dashboard
-                  </Link>
-                </>
-              )}
-
-              {isLoggedIn ? (
+      <SiteHeader>
+        <div className="relative" ref={currencyRef}>
+          <button
+            onClick={() => setCurrencyDropdownOpen(!currencyDropdownOpen)}
+            className="flex items-center gap-1 font-bold text-base hover:opacity-70 transition"
+          >
+            {currency} {currencyCode} <ChevronDown className="h-3 w-3 opacity-50" />
+          </button>
+          {currencyDropdownOpen && (
+            <div className="absolute top-full right-0 mt-2 bg-background text-foreground border border-foreground/20 rounded-lg shadow-lg z-50 min-w-[120px]">
+              {[['PHP', '₱'], ['USD', '$'], ['EUR', '€'], ['GBP', '£'], ['JPY', '¥'], ['INR', '₹']].map(([code, sym]) => (
                 <button
-                  onClick={() => signOut({ callbackUrl: '/auth/signin' })}
-                  className="flex items-center gap-2 font-bold text-base hover:opacity-70 transition"
+                  key={code}
+                  onClick={() => { setCurrencyCode(code); setCurrency(sym); setCurrencyDropdownOpen(false) }}
+                  className="w-full text-left px-4 py-2.5 font-bold text-base hover:opacity-70 transition border-b border-foreground/20 last:border-b-0"
                 >
-                  <LogOut className="h-5 w-5" />
-                  Logout
+                  {sym} {code}
                 </button>
-              ) : (
-                <>
-                  <Link
-                    href="/auth/signin"
-                    className="font-bold text-base hover:opacity-70 transition"
-                  >
-                    Sign In
-                  </Link>
-                  <span className="text-muted-foreground">/</span>
-                  <Link
-                    href="/auth/signup"
-                    className="font-bold text-base hover:opacity-70 transition"
-                  >
-                    Sign Up
-                  </Link>
-                </>
-              )}
+              ))}
             </div>
-          </div>
+          )}
         </div>
-      </div>
+        {isLoggedIn && (
+          <Link href="/dashboard" className="hover:opacity-70 transition" title="dashboard">
+            <LayoutDashboard className="h-5 w-5" />
+          </Link>
+        )}
+      </SiteHeader>
 
       {/* Main Content */}
       <div className="mx-auto max-w-6xl p-6 md:p-8">
@@ -330,68 +353,61 @@ export default function Calculator() {
                 </div>
               ))}
             </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                placeholder="Add person"
-                value={newPersonName}
-                onChange={(e) => setNewPersonName(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && addPerson()}
-                className="flex-1 bg-transparent text-lg font-bold outline-none border-b-2 border-muted-foreground/30 focus:border-foreground"
-              />
-              <button
-                onClick={addPerson}
-                className="w-10 h-10 flex items-center justify-center text-2xl font-bold opacity-50 hover:opacity-100 transition"
-              >
-                +
-              </button>
+            <div className="relative" ref={addPersonRef}>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Add person"
+                  value={newPersonName}
+                  onChange={(e) => {
+                    setNewPersonName(e.target.value)
+                    setFriendSuggestionsOpen(true)
+                  }}
+                  onFocus={() => setFriendSuggestionsOpen(true)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { addPerson(); setFriendSuggestionsOpen(false) }
+                  }}
+                  className="flex-1 bg-transparent text-lg font-bold outline-none border-b-2 border-muted-foreground/30 focus:border-foreground"
+                />
+                <button
+                  onClick={() => { addPerson(); setFriendSuggestionsOpen(false) }}
+                  className="w-10 h-10 flex items-center justify-center text-2xl font-bold opacity-50 hover:opacity-100 transition"
+                >
+                  +
+                </button>
+              </div>
+              {friendSuggestionsOpen && friends.length > 0 && (() => {
+                const available = friends.filter(
+                  f => !people.find(p => p.id === f.id) &&
+                    f.name.toLowerCase().includes(newPersonName.toLowerCase())
+                )
+                return available.length > 0 ? (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-background text-foreground border border-foreground/20 rounded-lg shadow-lg z-10">
+                    {available.map(friend => (
+                      <button
+                        key={friend.id}
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          setPeople(prev => [...prev, friend])
+                          setNewExpenseSplitWith(prev => [...prev, friend.id])
+                          setNewPersonName('')
+                          setFriendSuggestionsOpen(false)
+                        }}
+                        className="w-full text-left px-4 py-3 font-bold text-base hover:opacity-70 transition border-b border-foreground/20 last:border-b-0"
+                      >
+                        {friend.name}
+                      </button>
+                    ))}
+                  </div>
+                ) : null
+              })()}
             </div>
           </div>
 
           {/* Add Expense Section */}
           <div>
             <div className="mb-8">
-              <div className="flex items-center gap-3">
-                <h2 className="text-4xl font-bold">
-                  Add{' '}
-                  {!isLoggedIn ? (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="underline decoration-muted-foreground/50 decoration-2 underline-offset-4 font-bold cursor-help">
-                          Expense
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent side="right" className="max-w-xs">
-                        <p className="text-xs">
-                          Sign in to add recurring expenses and income to better track your budget.{' '}
-                          <Link href="/auth/signin" className="font-bold underline hover:opacity-70">
-                            Sign in
-                          </Link>
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  ) : (
-                    <span>Expense</span>
-                  )}
-                </h2>
-                {!isLoggedIn && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button className="text-muted-foreground/50 hover:text-muted-foreground transition-colors">
-                        <HelpCircle className="h-5 w-5" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="right" className="max-w-xs">
-                      <p className="text-xs">
-                        Sign in to add recurring expenses and income to better track your budget.{' '}
-                        <Link href="/auth/signin" className="font-bold underline hover:opacity-70">
-                          Sign in
-                        </Link>
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-              </div>
+              <h2 className="text-4xl font-bold">Add Expense</h2>
             </div>
             <div className="space-y-6">
               <div>
@@ -400,9 +416,10 @@ export default function Calculator() {
                   type="text"
                   placeholder="Dinner"
                   value={newExpenseName}
-                  onChange={(e) => setNewExpenseName(e.target.value)}
-                  className="w-full bg-transparent text-lg font-bold outline-none border-b-2 border-muted-foreground/30 focus:border-foreground"
+                  onChange={(e) => { setNewExpenseName(e.target.value); setFormErrors(p => ({ ...p, name: undefined })) }}
+                  className={`w-full bg-transparent text-lg font-bold outline-none border-b-2 focus:border-foreground ${formErrors.name ? 'border-red-500' : 'border-muted-foreground/30'}`}
                 />
+                {formErrors.name && <p className="text-xs text-red-500 mt-1">{formErrors.name}</p>}
               </div>
 
               <div>
@@ -411,45 +428,102 @@ export default function Calculator() {
                   type="number"
                   placeholder="0.00"
                   value={newExpenseAmount}
-                  onChange={(e) => setNewExpenseAmount(e.target.value)}
+                  onChange={(e) => { setNewExpenseAmount(e.target.value); setFormErrors(p => ({ ...p, amount: undefined })) }}
                   step="0.01"
-                  className="w-full bg-transparent text-lg font-bold outline-none border-b-2 border-muted-foreground/30 focus:border-foreground"
+                  className={`w-full bg-transparent text-lg font-bold outline-none border-b-2 focus:border-foreground [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${formErrors.amount ? 'border-red-500' : 'border-muted-foreground/30'}`}
                 />
+                {formErrors.amount && <p className="text-xs text-red-500 mt-1">{formErrors.amount}</p>}
+              </div>
+
+              <div className="relative" ref={categoryRef}>
+                <label className="text-sm font-bold text-muted-foreground block mb-2">Category</label>
+                <button
+                  type="button"
+                  onClick={() => setCategorySuggestionsOpen(o => !o)}
+                  className="w-full bg-transparent text-lg font-bold outline-none border-b-2 border-muted-foreground/30 focus:border-foreground text-left pb-2 flex items-center justify-between"
+                >
+                  {newExpenseCategory ? (
+                    <span className="flex items-center gap-2">
+                      {(() => { const Icon = getCategoryIcon(newExpenseCategory); return Icon ? <Icon className="h-4 w-4 opacity-60" /> : null })()}
+                      {newExpenseCategory}
+                    </span>
+                  ) : (
+                    <span className="font-normal text-muted-foreground/50">select category</span>
+                  )}
+                  <ChevronDown className="h-3 w-3 opacity-50 shrink-0" />
+                </button>
+                {categorySuggestionsOpen && (
+                  <div className="absolute top-full left-0 right-0 bg-background text-foreground border border-foreground/20 rounded-lg shadow-lg z-10">
+                    {newExpenseCategory && (
+                      <button
+                        type="button"
+                        onClick={() => { setNewExpenseCategory(''); setCategorySuggestionsOpen(false) }}
+                        className="w-full text-left px-4 py-3 text-sm font-bold text-muted-foreground hover:opacity-70 transition border-b border-foreground/20"
+                      >
+                        clear
+                      </button>
+                    )}
+                    {CATEGORIES.map(({ value, label, Icon }) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => { setNewExpenseCategory(value); setCategorySuggestionsOpen(false) }}
+                        className="w-full text-left px-4 py-3 font-bold text-base hover:opacity-70 transition border-b border-foreground/20 last:border-b-0 flex items-center gap-3"
+                      >
+                        <Icon className="h-4 w-4 opacity-60 shrink-0" />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div>
                 <label className="text-sm font-bold text-muted-foreground block mb-2">Paid By</label>
-                <select
-                  value={newExpensePaidBy}
-                  onChange={(e) => setNewExpensePaidBy(e.target.value)}
-                  className="w-full bg-transparent text-lg font-bold text-foreground outline-none border-b-2 border-muted-foreground/30 focus:border-foreground"
-                >
-                  {people.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
+                <div className="relative" ref={paidByRef}>
+                  <button
+                    onClick={() => setPaidByDropdownOpen(!paidByDropdownOpen)}
+                    className="w-full bg-transparent text-lg font-bold outline-none border-b-2 border-muted-foreground/30 focus:border-foreground text-left pb-2 flex justify-between items-center"
+                  >
+                    <span>{people.find(p => p.id === newExpensePaidBy)?.name || 'Select person'}</span>
+                    <ChevronDown className="h-3 w-3 opacity-50" />
+                  </button>
+                  {paidByDropdownOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-background text-foreground border border-foreground/20 rounded-lg shadow-lg z-10">
+                      {people.map(person => (
+                        <button
+                          key={person.id}
+                          onClick={() => { setNewExpensePaidBy(person.id); setPaidByDropdownOpen(false) }}
+                          className="w-full text-left px-4 py-3 font-bold text-base hover:opacity-70 transition border-b border-foreground/20 last:border-b-0"
+                        >
+                          {person.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div>
                 <label className="text-sm font-bold text-muted-foreground block mb-3">Split Between</label>
-                <div className="relative">
+                <div className="relative" ref={splitRef}>
                   <button
                     onClick={() => setSplitDropdownOpen(!splitDropdownOpen)}
                     className="w-full bg-transparent text-lg font-bold outline-none border-b-2 border-muted-foreground/30 focus:border-foreground text-left pb-2 flex justify-between items-center"
                   >
                     <span>{newExpenseSplitWith.length === people.length ? 'All' : `${newExpenseSplitWith.length} selected`}</span>
-                    <span className="text-muted-foreground">▼</span>
+                    <ChevronDown className="h-3 w-3 opacity-50" />
                   </button>
                   {splitDropdownOpen && (
-                    <div className="absolute top-full left-0 right-0 mt-2 bg-background border border-border/20 rounded-lg shadow-lg z-10">
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-background text-foreground border border-foreground/20 rounded-lg shadow-lg z-10">
                       <button
                         onClick={() => selectAllSplitWith()}
-                        className="w-full text-left px-4 py-3 font-bold text-base hover:bg-secondary/30 transition border-b border-border/20"
+                        className="w-full text-left px-4 py-3 font-bold text-base hover:opacity-70 transition border-b border-foreground/20"
                       >
                         Select All
                       </button>
                       {people.map(person => (
-                        <label key={person.id} className="flex items-center gap-3 px-4 py-3 hover:bg-secondary/30 transition cursor-pointer border-b border-border/20 last:border-b-0">
+                        <label key={person.id} className="flex items-center gap-3 px-4 py-3 hover:opacity-70 transition cursor-pointer border-b border-background/20 last:border-b-0">
                           <input
                             type="checkbox"
                             checked={newExpenseSplitWith.includes(person.id)}
@@ -464,97 +538,23 @@ export default function Calculator() {
                 </div>
               </div>
 
+              {formErrors.splitWith && <p className="text-xs text-red-500">{formErrors.splitWith}</p>}
+              {saveError && <p className="text-xs text-red-500">{saveError}</p>}
+
               <div className="flex gap-3 mt-8">
                 <button
                   onClick={addExpense}
-                  className={`py-4 bg-foreground text-background font-bold text-lg rounded-lg hover:opacity-90 transition ${ENABLE_RECEIPT_SCANNER ? 'flex-1' : 'w-full'}`}
+                  disabled={isSavingExpense}
+                  className="w-full py-4 bg-foreground text-background font-bold text-lg rounded-lg hover:opacity-90 transition"
                 >
-                  Add Expense
+                  {isSavingExpense ? 'Saving...' : editingExpenseId ? 'Update Expense' : 'Add Expense'}
                 </button>
-                {ENABLE_RECEIPT_SCANNER && (
-                  <button
-                    onClick={handleReceiptUpload}
-                    className="flex-1 py-4 border border-foreground text-foreground font-bold text-lg rounded-lg hover:opacity-70 transition"
-                  >
-                    Scan Receipt
-                  </button>
-                )}
               </div>
             </div>
           </div>
         </div>
 
         {/* Receipt Scanner Modal */}
-        {showReceiptScanner && ENABLE_RECEIPT_SCANNER && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <div className="bg-background w-full max-w-2xl max-h-96 overflow-y-auto p-8 rounded-lg">
-              <h2 className="text-4xl font-bold mb-8">Receipt Items</h2>
-              <div className="space-y-6 mb-8">
-                {receiptExpenses.map(item => (
-                  <div key={item.id} className="space-y-3 pb-6 border-b border-border/20">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <p className="font-bold text-lg">{item.name}</p>
-                        <p className="text-muted-foreground font-semibold mt-1">{currency}{item.amount.toFixed(2)}</p>
-                      </div>
-                      <button
-                        onClick={() => removeReceiptExpense(item.id)}
-                        className="text-muted-foreground hover:text-foreground transition opacity-50 hover:opacity-100"
-                      >
-                        <Trash2 className="h-5 w-5" />
-                      </button>
-                    </div>
-
-                    <div className="relative">
-                      <button
-                        onClick={() => setReceiptDropdownOpen(receiptDropdownOpen === item.id ? null : item.id)}
-                        className="w-full text-left bg-transparent border-b border-border/40 py-3 font-bold text-base outline-none focus:border-foreground text-foreground flex justify-between items-center"
-                      >
-                        <span>{item.paidByPersonId ? people.find(p => p.id === item.paidByPersonId)?.name : 'Select who paid'}</span>
-                        <span className="text-muted-foreground">▼</span>
-                      </button>
-                      {receiptDropdownOpen === item.id && (
-                        <div className="absolute top-full left-0 right-0 mt-2 bg-background border border-border/20 rounded-lg shadow-lg z-10">
-                          {people.map(person => (
-                            <button
-                              key={person.id}
-                              onClick={() => {
-                                setReceiptExpensePaidBy(item.id, person.id)
-                                setReceiptDropdownOpen(null)
-                              }}
-                              className="w-full text-left px-4 py-3 font-bold text-base hover:bg-secondary/30 transition border-b border-border/20 last:border-b-0"
-                            >
-                              {person.name}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setShowReceiptScanner(false)
-                    setReceiptExpenses([])
-                  }}
-                  className="flex-1 py-3 border border-foreground text-foreground font-bold rounded-lg hover:opacity-70 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmReceiptExpenses}
-                  className="flex-1 py-3 bg-foreground text-background font-bold rounded-lg hover:opacity-90 transition"
-                >
-                  Confirm
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Expenses List */}
         {expenses.length > 0 && (
           <div className="mt-16">
@@ -563,53 +563,21 @@ export default function Calculator() {
               {expenses.map(expense => (
                 <div
                   key={expense.id}
-                  onClick={() => startEditExpense(expense)}
                   className="group cursor-pointer flex items-center justify-between border-b border-border/20 pb-4 hover:opacity-70 transition"
+                  onClick={() => startEditExpense(expense)}
                 >
-                  {editingExpenseId === expense.id ? (
-                    <>
-                      <div className="flex-1 space-y-3">
-                        <input
-                          autoFocus
-                          type="text"
-                          value={editValues.name}
-                          onChange={(e) => setEditValues({ ...editValues, name: e.target.value })}
-                          onClick={(e) => e.stopPropagation()}
-                          className="w-full bg-transparent text-lg font-bold outline-none border-b-2 border-foreground/30 focus:border-foreground"
-                        />
-                        <div className="flex gap-2">
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={editValues.amount}
-                            onChange={(e) => setEditValues({ ...editValues, amount: e.target.value })}
-                            onClick={(e) => e.stopPropagation()}
-                            className="flex-1 bg-transparent text-lg font-bold outline-none border-b-2 border-foreground/30 focus:border-foreground"
-                          />
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              saveEditExpense(expense.id)
-                            }}
-                            className="font-bold text-sm opacity-70 hover:opacity-100"
-                          >
-                            Save
-                          </button>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div>
-                        <p className="text-xl font-bold">{expense.name}</p>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {getPersonName(expense.paidBy)} paid · {expense.splitWith.length} {expense.splitWith.length === 1 ? 'person' : 'people'}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <p className="text-2xl font-bold">{currency}{expense.amount.toFixed(2)}</p>
-                        <button
-                          onClick={(e) => {
+                  <>
+                    <div>
+                      <p className="text-xl font-bold">{expense.name}</p>
+                      <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1 flex-wrap">
+                        <span>{getPersonName(expense.paidBy)} paid · {expense.splitWith.length} {expense.splitWith.length === 1 ? 'person' : 'people'}</span>
+                        {expense.category && (() => { const Icon = getCategoryIcon(expense.category); return <span className="flex items-center gap-1">· {Icon && <Icon className="h-3 w-3" />}{expense.category}</span> })()}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <p className="text-2xl font-bold">{currency}{expense.amount.toFixed(2)}</p>
+                      <button
+                        onClick={(e) => {
                             e.stopPropagation()
                             removeExpense(expense.id)
                           }}
@@ -618,8 +586,7 @@ export default function Calculator() {
                           <Trash2 className="h-5 w-5" />
                         </button>
                       </div>
-                    </>
-                  )}
+                  </>
                 </div>
               ))}
             </div>
@@ -673,60 +640,6 @@ export default function Calculator() {
 
       </div>
 
-      {/* Add Friends Modal */}
-      {showAddFriendsModal && !isLoggedIn && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-background w-full max-w-md p-8 rounded-lg">
-            <h2 className="text-3xl font-bold mb-4">Add Friends</h2>
-            <p className="text-base text-muted-foreground font-semibold mb-6">Sign in to add friends</p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowAddFriendsModal(false)}
-                className="flex-1 py-3 border border-foreground text-foreground font-bold rounded-lg hover:opacity-70 transition"
-              >
-                Cancel
-              </button>
-              <Link
-                href="/auth/signin"
-                className="flex-1 py-3 bg-foreground text-background font-bold rounded-lg hover:opacity-90 transition text-center"
-              >
-                Sign In
-              </Link>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showAddFriendsModal && isLoggedIn && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-background w-full max-w-md p-8 rounded-lg">
-            <h2 className="text-3xl font-bold mb-6">Add Friends</h2>
-            <div className="space-y-3 max-h-64 overflow-y-auto mb-8">
-              {mockFriends.map(friend => (
-                <button
-                  key={friend.id}
-                  onClick={() => {
-                    if (!people.find(p => p.id === friend.id)) {
-                      setPeople([...people, friend])
-                      setNewExpenseSplitWith([...newExpenseSplitWith, friend.id])
-                    }
-                    setShowAddFriendsModal(false)
-                  }}
-                  className="w-full text-left py-3 px-4 rounded-lg hover:bg-secondary/30 transition font-bold text-base border border-border/20"
-                >
-                  {friend.name}
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={() => setShowAddFriendsModal(false)}
-              className="w-full py-3 border border-foreground text-foreground font-bold rounded-lg hover:opacity-70 transition"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

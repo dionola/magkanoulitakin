@@ -48,17 +48,6 @@ export const authOptions: NextAuthOptions = {
     strategy: 'jwt',
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
-  cookies: {
-    sessionToken: {
-      name: `next-auth.session-token`,
-      options: {
-        httpOnly: true,
-        sameSite: 'lax',
-        path: '/',
-        secure: process.env.NODE_ENV === 'production',
-      },
-    },
-  },
   callbacks: {
     async jwt({ token, user, account }) {
       if (user) {
@@ -162,4 +151,3 @@ export async function POST(
   const params = await context.params
   return handler(req, { params: Promise.resolve(params) })
 }
-

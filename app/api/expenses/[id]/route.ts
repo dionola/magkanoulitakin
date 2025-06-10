@@ -69,19 +69,43 @@ export async function PUT(
     }
 
     const body = await req.json()
+    const cascadeGroup = body.cascadeGroup === true
     const validatedData = updateExpenseSchema.parse(body)
+    const existingExpense = await Expense.findOne({
+      _id: params.id,
+      userId: user._id,
+    })
 
-    const expense = await Expense.findOneAndUpdate(
-      {
-        _id: params.id,
-        userId: user._id,
-      },
-      {
-        ...validatedData,
-        ...(validatedData.date && { date: new Date(validatedData.date) }),
-      },
-      { new: true, runValidators: true }
-    )
+    if (!existingExpense) {
+      return errorResponse(new Error('Expense not found'), 'Expense not found', 404)
+    }
+
+    const updateDoc = {
+      ...validatedData,
+      ...(validatedData.date && { date: new Date(validatedData.date) }),
+    }
+
+    if (cascadeGroup && existingExpense.transactionGroupId) {
+      await Expense.updateMany(
+        { transactionGroupId: existingExpense.transactionGroupId },
+        updateDoc,
+        { runValidators: true }
+      )
+    } else {
+      await Expense.updateOne(
+        {
+          _id: params.id,
+          userId: user._id,
+        },
+        updateDoc,
+        { runValidators: true }
+      )
+    }
+
+    const expense = await Expense.findOne({
+      _id: params.id,
+      userId: user._id,
+    })
 
     if (!expense) {
       return errorResponse(new Error('Expense not found'), 'Expense not found', 404)
@@ -124,13 +148,52 @@ export async function DELETE(
       return errorResponse(new Error('User not found'), 'User not found', 404)
     }
 
-    const expense = await Expense.findOneAndDelete({
+    const rawBody = await req.text()
+    const body = rawBody ? JSON.parse(rawBody) : {}
+    const cascadeGroup = body?.cascadeGroup === true
+
+    const expense = await Expense.findOne({
       _id: params.id,
       userId: user._id,
     })
 
     if (!expense) {
       return errorResponse(new Error('Expense not found'), 'Expense not found', 404)
+    }
+
+    if (cascadeGroup && expense.transactionGroupId) {
+      const groupedExpenses = await Expense.find({
+        transactionGroupId: expense.transactionGroupId,
+      }).select('_id')
+
+      await Expense.deleteMany({
+        transactionGroupId: expense.transactionGroupId,
+      })
+
+      try {
+        const ShareableLink = await import('@/lib/models/ShareableLink').then(m => m.default)
+        await ShareableLink.deleteMany({
+          resourceType: 'expense',
+          resourceId: { $in: groupedExpenses.map(groupedExpense => groupedExpense._id.toString()) },
+        })
+      } catch {
+        // Don't fail delete if shareable link cleanup fails
+      }
+    } else {
+      await Expense.deleteOne({
+        _id: params.id,
+        userId: user._id,
+      })
+
+      try {
+        const ShareableLink = await import('@/lib/models/ShareableLink').then(m => m.default)
+        await ShareableLink.deleteMany({
+          resourceType: 'expense',
+          resourceId: expense._id.toString(),
+        })
+      } catch {
+        // Don't fail delete if shareable link cleanup fails
+      }
     }
 
     return successResponse({ message: 'Expense deleted successfully' })

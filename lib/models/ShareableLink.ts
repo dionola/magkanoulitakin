@@ -3,7 +3,7 @@ import mongoose, { Schema, Model } from 'mongoose'
 export interface IShareableLink extends mongoose.Document {
   userId: mongoose.Types.ObjectId
   linkId: string // Unique identifier for the link
-  resourceType: 'expense' | 'recurring-expense' // Not income
+  resourceType: 'expense'
   resourceId: string // ID of the expense or recurring expense
   password?: string // Optional password (hashed)
   allowedFriendIds: mongoose.Types.ObjectId[] // Friends who can access without password
@@ -29,7 +29,7 @@ const ShareableLinkSchema = new Schema<IShareableLink>(
     },
     resourceType: {
       type: String,
-      enum: ['expense', 'recurring-expense'],
+      enum: ['expense'],
       required: true,
     },
     resourceId: {

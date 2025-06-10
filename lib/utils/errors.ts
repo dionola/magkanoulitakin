@@ -9,7 +9,7 @@ export class ApiError extends Error {
   }
 }
 
-export function errorResponse(error: unknown, defaultMessage: string = 'An error occurred') {
+export function errorResponse(error: unknown, defaultMessage: string = 'An error occurred', status?: number) {
   if (error instanceof ApiError) {
     return NextResponse.json(
       { error: error.message },
@@ -20,13 +20,13 @@ export function errorResponse(error: unknown, defaultMessage: string = 'An error
   if (error instanceof Error) {
     return NextResponse.json(
       { error: error.message },
-      { status: 500 }
+      { status: status ?? 500 }
     )
   }
 
   return NextResponse.json(
     { error: defaultMessage },
-    { status: 500 }
+    { status: status ?? 500 }
   )
 }
 

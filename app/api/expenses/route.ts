@@ -5,6 +5,8 @@ import connectDB from '@/lib/db'
 import Expense from '@/lib/models/Expense'
 import { errorResponse, successResponse } from '@/lib/utils/errors'
 import { createExpenseSchema } from '@/lib/validations/expense'
+import Friend from '@/lib/models/Friend'
+import crypto from 'crypto'
 
 export async function GET(req: NextRequest) {
   try {
@@ -111,46 +113,73 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
+    const sharedParticipantIds = Array.isArray(body.sharedParticipantIds)
+      ? body.sharedParticipantIds.filter((value: unknown): value is string => typeof value === 'string')
+      : []
     const validatedData = createExpenseSchema.parse(body)
+    const acceptedFriends = sharedParticipantIds.length > 0
+      ? await Friend.find({
+          userId: user._id,
+          friendId: { $in: sharedParticipantIds },
+          status: 'accepted',
+        }).select('friendId').lean()
+      : []
 
-    const expense = await Expense.create({
-      userId: user._id,
-      name: validatedData.name,
-      amount: validatedData.amount,
-      date: validatedData.date ? new Date(validatedData.date) : new Date(),
-      budget: validatedData.budget,
-      category: validatedData.category,
-      paidBy: validatedData.paidBy,
-      splitWith: validatedData.splitWith,
-      type: validatedData.type,
-      transactionGroupId: validatedData.transactionGroupId,
-    })
+    const participantUserIds = Array.from(
+      new Set([
+        user._id.toString(),
+        ...acceptedFriends.map(friend => friend.friendId.toString()),
+      ])
+    )
 
-    // Auto-create shareable link if it doesn't exist
+    const transactionGroupId =
+      validatedData.transactionGroupId ||
+      (participantUserIds.length > 1 ? crypto.randomBytes(12).toString('hex') : undefined)
+
+    const expenses = await Expense.insertMany(
+      participantUserIds.map(participantId => ({
+        userId: participantId,
+        name: validatedData.name,
+        amount: validatedData.amount,
+        date: validatedData.date ? new Date(validatedData.date) : new Date(),
+        budget: validatedData.budget,
+        category: validatedData.category,
+        paidBy: validatedData.paidBy,
+        splitWith: validatedData.splitWith,
+        type: validatedData.type,
+        transactionGroupId,
+      }))
+    )
+
+    // Auto-create shareable links if they don't exist
     try {
       const ShareableLink = await import('@/lib/models/ShareableLink').then(m => m.default)
-      const existingLink = await ShareableLink.findOne({
-        userId: user._id,
-        resourceType: 'expense',
-        resourceId: expense._id.toString(),
-        isActive: true,
-      })
-      
-      if (!existingLink) {
-        const crypto = await import('crypto')
-        const linkId = crypto.randomBytes(16).toString('hex')
-        
-        await ShareableLink.create({
-          userId: user._id,
-          linkId,
-          resourceType: 'expense',
-          resourceId: expense._id.toString(),
-          isActive: true,
+
+      await Promise.all(
+        expenses.map(async (expense) => {
+          const existingLink = await ShareableLink.findOne({
+            userId: expense.userId,
+            resourceType: 'expense',
+            resourceId: expense._id.toString(),
+            isActive: true,
+          })
+
+          if (!existingLink) {
+            await ShareableLink.create({
+              userId: expense.userId,
+              linkId: crypto.randomBytes(16).toString('hex'),
+              resourceType: 'expense',
+              resourceId: expense._id.toString(),
+              isActive: true,
+            })
+          }
         })
-      }
+      )
     } catch {
       // Don't fail the request if link creation fails
     }
+
+    const expense = expenses.find(createdExpense => createdExpense.userId.toString() === user._id.toString()) || expenses[0]
 
     return successResponse(
       {
@@ -164,6 +193,7 @@ export async function POST(req: NextRequest) {
         splitWith: expense.splitWith,
         type: expense.type,
         transactionGroupId: expense.transactionGroupId,
+        sharedParticipantCount: participantUserIds.length,
       },
       201
     )
@@ -174,4 +204,3 @@ export async function POST(req: NextRequest) {
     return errorResponse(error)
   }
 }
-

@@ -67,6 +67,7 @@ export function createExpense(body: {
   category?: string
   type?: 'expense' | 'settlement'
   transactionGroupId?: string
+  sharedParticipantIds?: string[]
 }): Promise<Expense> {
   return request<Expense>('/api/expenses', {
     method: 'POST',
@@ -80,7 +81,9 @@ export function getExpense(id: string): Promise<Expense> {
 
 export function updateExpense(
   id: string,
-  body: Partial<{ name: string; amount: number; date: string; paidBy: string; splitWith: string[]; budget?: string; category?: string }>
+  body: Partial<{ name: string; amount: number; date: string; paidBy: string; splitWith: string[]; budget?: string; category?: string }> & {
+    cascadeGroup?: boolean
+  }
 ): Promise<Expense> {
   return request<Expense>(`/api/expenses/${id}`, {
     method: 'PUT',
@@ -88,8 +91,11 @@ export function updateExpense(
   })
 }
 
-export function deleteExpense(id: string): Promise<void> {
-  return request(`/api/expenses/${id}`, { method: 'DELETE' })
+export function deleteExpense(id: string, options?: { cascadeGroup?: boolean }): Promise<void> {
+  return request(`/api/expenses/${id}`, {
+    method: 'DELETE',
+    ...(options ? { body: JSON.stringify(options) } : {}),
+  })
 }
 
 // --- Friends ---

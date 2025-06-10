@@ -1,11 +1,12 @@
 {
-  "name": "my-v0-project",
+  "name": "magkanoulitakin",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "build": "next build",
     "dev": "next dev",
     "lint": "eslint .",
+    "seed": "node --env-file=.env.local scripts/seed.mjs",
     "start": "next start"
   },
   "dependencies": {

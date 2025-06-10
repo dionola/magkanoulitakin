@@ -60,6 +60,7 @@ export interface CalculatorExpense {
   id: string
   name: string
   amount: number
+  category?: string
   paidBy: string
   splitWith: string[]
   splitType: 'equal' | 'percentage' | 'exact'

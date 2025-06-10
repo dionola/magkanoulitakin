@@ -1,15 +1,29 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { getExpenses } from '@/lib/api'
 import type { Expense } from '@/lib/types'
+import { useTheme } from '@/components/providers/theme-provider'
+import { CATEGORIES, getCategoryIcon } from '@/lib/utils/categories'
 
 export default function HistoryPage() {
+  const { darkMode } = useTheme()
   const [dateRange, setDateRange] = useState<'thisMonth' | 'lastMonth' | 'thisYear' | 'all'>('all')
+  const [selectedCategory, setSelectedCategory] = useState('')
   const [expandedExpense, setExpandedExpense] = useState<string | null>(null)
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false)
+  const categoryRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (categoryRef.current && !categoryRef.current.contains(e.target as Node)) setCategoryDropdownOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   const fetchExpenses = useCallback(async () => {
     try {
@@ -27,13 +41,20 @@ export default function HistoryPage() {
     fetchExpenses()
   }, [fetchExpenses])
 
-  const totalSpent = expenses
+  const filtered = selectedCategory
+    ? expenses.filter(e => e.category === selectedCategory)
+    : expenses
+
+  const totalSpent = filtered
     .filter(e => e.type === 'expense')
     .reduce((sum, e) => sum + e.amount, 0)
 
   const toggleExpense = (expenseId: string) => {
     setExpandedExpense(expandedExpense === expenseId ? null : expenseId)
   }
+
+  const selectStyle = "bg-foreground text-sm text-background border-b-2 border-background/30 pb-2 outline-none focus:border-background transition-colors cursor-pointer"
+  const SelectedCatIcon = selectedCategory ? getCategoryIcon(selectedCategory) : null
 
   return (
     <div className="min-h-screen bg-foreground">
@@ -43,21 +64,60 @@ export default function HistoryPage() {
           <p className="text-sm text-background/50 font-medium">all transactions and expenses</p>
         </div>
 
-        {/* Date Range Filter */}
-        <div className="mb-12">
+        {/* Filters */}
+        <div className="flex items-center gap-6 mb-12">
           <select
             value={dateRange}
-            onChange={(e) => setDateRange(e.target.value)}
-            className="bg-foreground text-sm text-background border-b-2 border-background/30 pb-2 outline-none focus:border-background transition-colors cursor-pointer"
-            style={{
-              colorScheme: 'dark',
-            }}
+            onChange={(e) => setDateRange(e.target.value as typeof dateRange)}
+            className={selectStyle}
+            style={{ colorScheme: darkMode ? 'dark' : 'light' }}
           >
-            <option value="thisMonth" className="bg-foreground text-background">this month</option>
-            <option value="lastMonth" className="bg-foreground text-background">last month</option>
-            <option value="thisYear" className="bg-foreground text-background">this year</option>
-            <option value="all" className="bg-foreground text-background">all time</option>
+            <option value="thisMonth">this month</option>
+            <option value="lastMonth">last month</option>
+            <option value="thisYear">this year</option>
+            <option value="all">all time</option>
           </select>
+
+          {/* Custom category dropdown */}
+          <div className="relative" ref={categoryRef}>
+            <button
+              type="button"
+              onClick={() => setCategoryDropdownOpen(o => !o)}
+              className="flex items-center gap-2 text-sm text-background border-b-2 border-background/30 pb-2 hover:border-background transition-colors"
+            >
+              {selectedCategory ? (
+                <>
+                  {SelectedCatIcon && <SelectedCatIcon className="h-3.5 w-3.5" />}
+                  {selectedCategory}
+                </>
+              ) : (
+                'all categories'
+              )}
+              <ChevronDown className="h-3 w-3 opacity-50" />
+            </button>
+            {categoryDropdownOpen && (
+              <div className="absolute top-full left-0 mt-2 bg-foreground text-background border border-background/20 shadow-lg z-10 min-w-[160px]">
+                <button
+                  type="button"
+                  onClick={() => { setSelectedCategory(''); setCategoryDropdownOpen(false) }}
+                  className="w-full text-left px-4 py-2 text-sm hover:opacity-70 transition border-b border-background/10"
+                >
+                  all categories
+                </button>
+                {CATEGORIES.map(({ value, label, Icon }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => { setSelectedCategory(value); setCategoryDropdownOpen(false) }}
+                    className="w-full text-left px-4 py-2 text-sm hover:opacity-70 transition flex items-center gap-2 border-b border-background/10 last:border-b-0"
+                  >
+                    <Icon className="h-3.5 w-3.5 opacity-60 shrink-0" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Total Spent */}
@@ -66,64 +126,77 @@ export default function HistoryPage() {
           <p className="text-5xl md:text-6xl font-bold text-background">₱{totalSpent.toFixed(2)}</p>
         </div>
 
-        {/* All Expenses */}
+        {/* Expenses List */}
         <div>
-          <h2 className="text-2xl font-bold text-background mb-8">all expenses</h2>
+          <h2 className="text-2xl font-bold text-background mb-8 flex items-center gap-2">
+            {selectedCategory ? (
+              <>
+                {SelectedCatIcon && <SelectedCatIcon className="h-5 w-5 opacity-70" />}
+                {selectedCategory}
+              </>
+            ) : 'all expenses'}
+          </h2>
 
           <div className="space-y-4">
             {isLoading ? (
               <p className="text-background/50 text-sm">loading...</p>
-            ) : expenses.length === 0 ? (
+            ) : filtered.length === 0 ? (
               <p className="text-background/50 text-sm">no expenses in this period</p>
             ) : (
-              expenses.map(expense => (
-                <div key={expense.id} className="border-b border-background/20 pb-4">
-                  <button
-                    onClick={() => toggleExpense(expense.id)}
-                    className="w-full flex items-center justify-between text-left group"
-                  >
-                    <div className="flex-1">
-                      <p className="text-lg font-bold text-background">{expense.name}</p>
-                      <p className="text-sm text-background/50 mt-1">
-                        {expense.date} • {expense.budget || 'no budget'} • {expense.paidBy}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <p className="text-xl font-bold text-background">₱{expense.amount.toFixed(2)}</p>
-                      {expandedExpense === expense.id ? (
-                        <ChevronUp className="h-5 w-5 text-background/40" />
-                      ) : (
-                        <ChevronDown className="h-5 w-5 text-background/40" />
-                      )}
-                    </div>
-                  </button>
-
-                  {expandedExpense === expense.id && (
-                    <div className="mt-4 pl-4 border-l border-background/20 space-y-2">
-                      <p className="text-sm text-background/50">
-                        <span className="font-medium text-background">type:</span> {expense.type}
-                      </p>
-                      <p className="text-sm text-background/50">
-                        <span className="font-medium text-background">budget:</span> {expense.budget || 'no budget'}
-                      </p>
-                      <p className="text-sm text-background/50">
-                        <span className="font-medium text-background">paid by:</span> {expense.paidBy}
-                      </p>
-                      {expense.splitWith.length > 0 && (
-                        <p className="text-sm text-background/50">
-                          <span className="font-medium text-background">split with:</span> {expense.splitWith.join(', ')}
+              filtered.map(expense => {
+                const CatIcon = expense.category ? getCategoryIcon(expense.category) : null
+                return (
+                  <div key={expense.id} className="border-b border-background/20 pb-4">
+                    <button
+                      onClick={() => toggleExpense(expense.id)}
+                      className="w-full flex items-center justify-between text-left group"
+                    >
+                      <div className="flex-1">
+                        <p className="text-lg font-bold text-background">{expense.name}</p>
+                        <p className="text-sm text-background/50 mt-1 flex items-center gap-1 flex-wrap">
+                          <span>{expense.date}</span>
+                          {expense.category && (
+                            <span className="flex items-center gap-1">
+                              •{CatIcon && <CatIcon className="h-3 w-3" />}{expense.category}
+                            </span>
+                          )}
+                          <span>• {expense.paidBy}</span>
                         </p>
-                      )}
-                      <p className="text-sm text-background/50">
-                        <span className="font-medium text-background">amount per person:</span> ₱{(expense.amount / (expense.splitWith.length || 1)).toFixed(2)}
-                      </p>
-                      <p className="text-sm text-background/50">
-                        <span className="font-medium text-background">date:</span> {expense.date}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              ))
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <p className="text-xl font-bold text-background">₱{expense.amount.toFixed(2)}</p>
+                        {expandedExpense === expense.id
+                          ? <ChevronUp className="h-5 w-5 text-background/40" />
+                          : <ChevronDown className="h-5 w-5 text-background/40" />
+                        }
+                      </div>
+                    </button>
+
+                    {expandedExpense === expense.id && (
+                      <div className="mt-4 pl-4 border-l border-background/20 space-y-2">
+                        {expense.category && (
+                          <p className="text-sm text-background/50 flex items-center gap-1">
+                            <span className="font-medium text-background">category:</span>
+                            {CatIcon && <CatIcon className="h-3 w-3" />}
+                            {expense.category}
+                          </p>
+                        )}
+                        <p className="text-sm text-background/50">
+                          <span className="font-medium text-background">paid by:</span> {expense.paidBy}
+                        </p>
+                        {expense.splitWith.length > 0 && (
+                          <p className="text-sm text-background/50">
+                            <span className="font-medium text-background">split with:</span> {expense.splitWith.join(', ')}
+                          </p>
+                        )}
+                        <p className="text-sm text-background/50">
+                          <span className="font-medium text-background">amount per person:</span> ₱{(expense.amount / (expense.splitWith.length || 1)).toFixed(2)}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )
+              })
             )}
           </div>
         </div>

@@ -1,6 +1,7 @@
 'use client'
 
 import type { DateRange } from '@/lib/api'
+import { useTheme } from '@/components/providers/theme-provider'
 
 const OPTIONS: { value: DateRange; label: string }[] = [
   { value: 'thisMonth', label: 'this month' },
@@ -29,6 +30,8 @@ export function DateRangeFilter({
   showCustom: boolean
   onShowCustomChange: (v: boolean) => void
 }) {
+  const { darkMode } = useTheme()
+
   return (
     <div className="mb-12">
       <div className="flex items-center gap-4 flex-wrap">
@@ -37,17 +40,22 @@ export function DateRangeFilter({
           onChange={(e) => {
             const v = e.target.value as DateRange
             onDateRangeChange(v)
-            if (v !== 'custom') {
-              onShowCustomChange(false)
-            } else {
+            if (v === 'custom') {
+              const today = new Date()
+              const yearStart = `${today.getFullYear()}-01-01`
+              const todayStr = today.toISOString().split('T')[0]
+              onCustomStartDateChange(yearStart)
+              onCustomEndDateChange(todayStr)
               onShowCustomChange(true)
+            } else {
+              onShowCustomChange(false)
             }
           }}
-          className="bg-foreground text-sm text-background border-b-2 border-background/30 pb-2 outline-none focus:border-background transition-colors cursor-pointer"
-          style={{ colorScheme: 'dark' }}
+          className="bg-background text-sm text-foreground border-b-2 border-foreground/30 pb-2 outline-none focus:border-foreground transition-colors cursor-pointer"
+          style={{ colorScheme: darkMode ? 'dark' : 'light' }}
         >
           {OPTIONS.map((o) => (
-            <option key={o.value} value={o.value} className="bg-foreground text-background">
+            <option key={o.value} value={o.value} className="bg-background text-foreground">
               {o.label}
             </option>
           ))}
@@ -58,16 +66,16 @@ export function DateRangeFilter({
               type="date"
               value={customStartDate}
               onChange={(e) => onCustomStartDateChange(e.target.value)}
-              className="bg-foreground text-sm text-background border-b-2 border-background/30 pb-2 outline-none focus:border-background"
-              style={{ colorScheme: 'dark' }}
+              className="bg-background text-sm text-foreground border-b-2 border-foreground/30 pb-2 outline-none focus:border-foreground"
+              style={{ colorScheme: darkMode ? 'dark' : 'light' }}
             />
-            <span className="text-background/50">to</span>
+            <span className="text-foreground/50">to</span>
             <input
               type="date"
               value={customEndDate}
               onChange={(e) => onCustomEndDateChange(e.target.value)}
-              className="bg-foreground text-sm text-background border-b-2 border-background/30 pb-2 outline-none focus:border-background"
-              style={{ colorScheme: 'dark' }}
+              className="bg-background text-sm text-foreground border-b-2 border-foreground/30 pb-2 outline-none focus:border-foreground"
+              style={{ colorScheme: darkMode ? 'dark' : 'light' }}
             />
           </div>
         )}
