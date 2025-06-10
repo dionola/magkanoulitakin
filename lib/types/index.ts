@@ -13,7 +13,9 @@ export interface Expense {
   paidBy: string
   splitWith: string[]
   type: 'expense' | 'settlement'
+  sharedExpenseId?: string
   transactionGroupId?: string
+  transactionGroupName?: string
 }
 
 export interface Friend {
@@ -25,6 +27,7 @@ export interface Friend {
 
 export interface TransactionGroup {
   id: string
+  name: string
   expenses: Expense[]
   totalAmount: number
   date: string
@@ -65,4 +68,7 @@ export interface CalculatorExpense {
   splitWith: string[]
   splitType: 'equal' | 'percentage' | 'exact'
   splitData: Record<string, number>
+  sharedExpenseId?: string
+  transactionGroupId?: string
+  transactionGroupName?: string
 }

@@ -85,7 +85,9 @@ export async function GET(req: NextRequest) {
       paidBy: expense.paidBy,
       splitWith: expense.splitWith,
       type: expense.type,
+      sharedExpenseId: expense.sharedExpenseId,
       transactionGroupId: expense.transactionGroupId,
+      transactionGroupName: expense.transactionGroupName,
       createdAt: expense.createdAt.toISOString(),
       updatedAt: expense.updatedAt.toISOString(),
     }))
@@ -135,6 +137,7 @@ export async function POST(req: NextRequest) {
     const transactionGroupId =
       validatedData.transactionGroupId ||
       (participantUserIds.length > 1 ? crypto.randomBytes(12).toString('hex') : undefined)
+    const sharedExpenseId = validatedData.sharedExpenseId || crypto.randomBytes(12).toString('hex')
 
     const expenses = await Expense.insertMany(
       participantUserIds.map(participantId => ({
@@ -147,7 +150,9 @@ export async function POST(req: NextRequest) {
         paidBy: validatedData.paidBy,
         splitWith: validatedData.splitWith,
         type: validatedData.type,
+        sharedExpenseId,
         transactionGroupId,
+        transactionGroupName: validatedData.transactionGroupName,
       }))
     )
 
@@ -192,7 +197,9 @@ export async function POST(req: NextRequest) {
         paidBy: expense.paidBy,
         splitWith: expense.splitWith,
         type: expense.type,
+        sharedExpenseId: expense.sharedExpenseId,
         transactionGroupId: expense.transactionGroupId,
+        transactionGroupName: expense.transactionGroupName,
         sharedParticipantCount: participantUserIds.length,
       },
       201

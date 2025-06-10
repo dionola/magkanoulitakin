@@ -66,7 +66,9 @@ export function createExpense(body: {
   budget?: string
   category?: string
   type?: 'expense' | 'settlement'
+  sharedExpenseId?: string
   transactionGroupId?: string
+  transactionGroupName?: string
   sharedParticipantIds?: string[]
 }): Promise<Expense> {
   return request<Expense>('/api/expenses', {
@@ -81,7 +83,7 @@ export function getExpense(id: string): Promise<Expense> {
 
 export function updateExpense(
   id: string,
-  body: Partial<{ name: string; amount: number; date: string; paidBy: string; splitWith: string[]; budget?: string; category?: string }> & {
+  body: Partial<{ name: string; amount: number; date: string; paidBy: string; splitWith: string[]; budget?: string; category?: string; transactionGroupName?: string }> & {
     cascadeGroup?: boolean
   }
 ): Promise<Expense> {

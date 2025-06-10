@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
+import Link from 'next/link'
 import { getExpenses } from '@/lib/api'
 import type { Expense } from '@/lib/types'
 import { useTheme } from '@/components/providers/theme-provider'
 import { CATEGORIES, getCategoryIcon } from '@/lib/utils/categories'
+import { getExpenseShare } from '@/lib/utils/expense-shares'
 
 export default function HistoryPage() {
   const { darkMode } = useTheme()
@@ -45,9 +47,13 @@ export default function HistoryPage() {
     ? expenses.filter(e => e.category === selectedCategory)
     : expenses
 
-  const totalSpent = filtered
+  const sortedFiltered = [...filtered].sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  )
+
+  const totalSpent = sortedFiltered
     .filter(e => e.type === 'expense')
-    .reduce((sum, e) => sum + e.amount, 0)
+    .reduce((sum, e) => sum + getExpenseShare(e), 0)
 
   const toggleExpense = (expenseId: string) => {
     setExpandedExpense(expandedExpense === expenseId ? null : expenseId)
@@ -57,7 +63,7 @@ export default function HistoryPage() {
   const SelectedCatIcon = selectedCategory ? getCategoryIcon(selectedCategory) : null
 
   return (
-    <div className="min-h-screen bg-foreground">
+    <div className="min-h-dvh bg-foreground">
       <div className="mx-auto max-w-4xl px-6 py-12">
         <div className="mb-12">
           <h1 className="text-4xl font-bold tracking-tight text-background md:text-5xl mb-2">history</h1>
@@ -140,10 +146,10 @@ export default function HistoryPage() {
           <div className="space-y-4">
             {isLoading ? (
               <p className="text-background/50 text-sm">loading...</p>
-            ) : filtered.length === 0 ? (
+            ) : sortedFiltered.length === 0 ? (
               <p className="text-background/50 text-sm">no expenses in this period</p>
             ) : (
-              filtered.map(expense => {
+              sortedFiltered.map(expense => {
                 const CatIcon = expense.category ? getCategoryIcon(expense.category) : null
                 return (
                   <div key={expense.id} className="border-b border-background/20 pb-4">
@@ -154,6 +160,7 @@ export default function HistoryPage() {
                       <div className="flex-1">
                         <p className="text-lg font-bold text-background">{expense.name}</p>
                         <p className="text-sm text-background/50 mt-1 flex items-center gap-1 flex-wrap">
+                          {expense.transactionGroupName && <span>{expense.transactionGroupName}</span>}
                           <span>{expense.date}</span>
                           {expense.category && (
                             <span className="flex items-center gap-1">
@@ -164,7 +171,7 @@ export default function HistoryPage() {
                         </p>
                       </div>
                       <div className="flex items-center gap-4">
-                        <p className="text-xl font-bold text-background">₱{expense.amount.toFixed(2)}</p>
+                        <p className="text-xl font-bold text-background">₱{getExpenseShare(expense).toFixed(2)}</p>
                         {expandedExpense === expense.id
                           ? <ChevronUp className="h-5 w-5 text-background/40" />
                           : <ChevronDown className="h-5 w-5 text-background/40" />
@@ -190,8 +197,18 @@ export default function HistoryPage() {
                           </p>
                         )}
                         <p className="text-sm text-background/50">
-                          <span className="font-medium text-background">amount per person:</span> ₱{(expense.amount / (expense.splitWith.length || 1)).toFixed(2)}
+                          <span className="font-medium text-background">amount per person:</span> ₱{getExpenseShare(expense).toFixed(2)}
                         </p>
+                        <div className="pt-2">
+                          <Link
+                            href={expense.transactionGroupId
+                              ? `/calculator?transactionGroupId=${encodeURIComponent(expense.transactionGroupId)}`
+                              : `/calculator?expenseId=${encodeURIComponent(expense.id)}`}
+                            className="text-sm font-medium text-background/70 hover:text-background transition"
+                          >
+                            edit in calculator
+                          </Link>
+                        </div>
                       </div>
                     )}
                   </div>

@@ -49,7 +49,13 @@ export const authOptions: NextAuthOptions = {
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   callbacks: {
-    async jwt({ token, user, account }) {
+    async jwt({ token, user, account, trigger, session }) {
+      if (trigger === 'update' && session?.user) {
+        if (session.user.name) token.name = session.user.name
+        if (session.user.email) token.email = session.user.email
+        if (session.user.image) token.picture = session.user.image
+      }
+
       if (user) {
         if (account?.provider === 'google') {
           await connectDB()

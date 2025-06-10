@@ -4,11 +4,13 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
 import { ChevronDown, ChevronUp, Plus, X } from 'lucide-react'
+import Link from 'next/link'
 import { CATEGORIES, getCategoryIcon } from '@/lib/utils/categories'
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import type { Expense, Friend, TransactionGroup } from '@/lib/types'
 import { getExpenses, createExpense, updateMe, updatePassword, deleteAccount } from '@/lib/api'
 import { calculateSettlements, getExpenseTotals } from '@/lib/utils/settlements'
+import { getExpenseParticipantCount, getExpenseShare } from '@/lib/utils/expense-shares'
 import { useTheme } from '@/components/providers/theme-provider'
 import { useExpenses } from '@/hooks/useExpenses'
 import { useFriends } from '@/hooks/useFriends'
@@ -66,7 +68,6 @@ export default function Dashboard() {
   const { friends, isAddingFriend, fetchFriends, handleAddFriend, handleUnfriend } = useFriends(authenticated)
   const { friendRequests, fetchFriendRequests, handleAccept } = useFriendRequests(authenticated)
   const { hasPassword } = useUserPassword(authenticated)
-
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/auth/signin')
@@ -114,12 +115,20 @@ export default function Dashboard() {
     try {
       setIsChangingName(true)
       setError(null)
-      await updateMe({ name: newName.trim() })
-      setDisplayName(newName.trim())
+      const updatedUser = await updateMe({ name: newName.trim() })
+      setDisplayName(updatedUser.name)
       setShowChangeName(false)
       setNewName('')
       setError(null)
-      if (updateSession) await updateSession()
+      if (updateSession) {
+        await updateSession({
+          ...session,
+          user: {
+            ...session?.user,
+            name: updatedUser.name,
+          },
+        })
+      }
       router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to change name')
@@ -178,8 +187,9 @@ export default function Dashboard() {
 
       return {
         id,
-        expenses: groupExpenses.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
-        totalAmount: groupExpenses.reduce((sum, e) => sum + e.amount, 0),
+        name: groupExpenses[0].transactionGroupName || `${groupExpenses.length} shared ${groupExpenses.length === 1 ? 'purchase' : 'purchases'}`,
+        expenses: groupExpenses.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+        totalAmount: groupExpenses.reduce((sum, e) => sum + getExpenseShare(e), 0),
         date: groupExpenses[0].date,
         participants: Array.from(allParticipants),
       }
@@ -192,19 +202,20 @@ export default function Dashboard() {
     })
   }
 
-  const recentExpenses = expenses.slice(0, 5)
-  const totalSpent = expenses
+  const personalExpenses = expenses
+  const recentExpenses = personalExpenses.slice(0, 5)
+  const totalSpent = personalExpenses
     .filter(e => e.type === 'expense')
-    .reduce((sum, e) => sum + e.amount, 0)
+    .reduce((sum, e) => sum + getExpenseShare(e), 0)
 
-  const allExpenses = groupExpenses(expenses)
+  const allExpenses = groupExpenses(personalExpenses)
 
   // Calculate spending by category
-  const spendingByCategory = expenses
+  const spendingByCategory = personalExpenses
     .filter(e => e.type === 'expense' && e.category)
     .reduce((acc, e) => {
       const cat = e.category || 'uncategorized'
-      acc[cat] = (acc[cat] || 0) + e.amount
+      acc[cat] = (acc[cat] || 0) + getExpenseShare(e)
       return acc
     }, {} as Record<string, number>)
 
@@ -213,11 +224,11 @@ export default function Dashboard() {
     .sort((a, b) => b.value - a.value)
 
   // Calculate spending trajectory (by day)
-  const spendingByDate = expenses
+  const spendingByDate = personalExpenses
     .filter(e => e.type === 'expense')
     .reduce((acc, e) => {
       const date = e.date
-      acc[date] = (acc[date] || 0) + e.amount
+      acc[date] = (acc[date] || 0) + getExpenseShare(e)
       return acc
     }, {} as Record<string, number>)
 
@@ -240,12 +251,12 @@ export default function Dashboard() {
   })()
 
   // Calculate monthly spending
-  const monthlySpending = expenses
+  const monthlySpending = personalExpenses
     .filter(e => e.type === 'expense')
     .reduce((acc, e) => {
       const d = new Date(e.date)
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-      acc[key] = (acc[key] || 0) + e.amount
+      acc[key] = (acc[key] || 0) + getExpenseShare(e)
       return acc
     }, {} as Record<string, number>)
 
@@ -355,7 +366,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-dvh bg-background">
       {/* Floating Add Expense Button */}
       <button
         onClick={() => setShowAddExpense(true)}
@@ -391,7 +402,7 @@ export default function Dashboard() {
         </div>
 
         {/* Charts Section */}
-        {expenses.length > 0 && (
+        {personalExpenses.length > 0 && (
           <div className="mb-16 space-y-12">
             {/* Spending by Category */}
             {categoryData.length > 0 && (
@@ -463,7 +474,7 @@ export default function Dashboard() {
                         activeDot={{
                           r: 6, cursor: 'pointer',
                           onClick: (_: unknown, payload: { payload: { dateStr: string } }) => {
-                            const hits = expenses.filter(e => e.date === payload.payload.dateStr)
+                            const hits = personalExpenses.filter(e => e.date === payload.payload.dateStr)
                             if (hits.length) setDetailModal(hits)
                           }
                         }}
@@ -509,7 +520,7 @@ export default function Dashboard() {
         <div className="mb-16">
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-2xl font-bold text-foreground">transactions</h2>
-            {expenses.length > 5 && (
+            {allExpenses.length > 5 && (
               <button
                 onClick={() => setShowHistory(!showHistory)}
                 className="text-sm text-foreground/70 transition-colors hover:text-foreground"
@@ -537,7 +548,7 @@ export default function Dashboard() {
                         >
                           <div className="flex-1">
                             <p className="text-lg font-bold text-foreground">
-                              {group.expenses.length} shared {group.expenses.length === 1 ? 'purchase' : 'purchases'}
+                              {group.name}
                             </p>
                             <p className="text-sm text-foreground/50 mt-1">
                               {group.date} • {group.participants.join(', ')}
@@ -565,7 +576,7 @@ export default function Dashboard() {
                               <span>• {expense.paidBy}</span>
                             </p>
                           </div>
-                          <p className="text-xl font-bold text-foreground">₱{expense.amount.toFixed(2)}</p>
+                          <p className="text-xl font-bold text-foreground">₱{getExpenseShare(expense).toFixed(2)}</p>
                         </button>
                       </div>
                     )
@@ -884,7 +895,7 @@ export default function Dashboard() {
                         <div className="flex-1">
                           <p className="text-lg font-bold text-foreground">{expense.name}</p>
                           <p className="text-sm text-foreground/50 mt-1">
-                            {expense.date} • ₱{expense.amount.toFixed(2)}
+                            {expense.date} • ₱{getExpenseShare(expense).toFixed(2)}
                           </p>
                           <p className="text-xs text-foreground/40 mt-1">
                             {expense.paidBy === friends.find(f => f.id === selectedFriendId)?.name ? 'paid by them' : 'split with them'}
@@ -915,6 +926,12 @@ export default function Dashboard() {
         }))
         const totals = getExpenseTotals(people, normalised)
         const settlements = calculateSettlements(people, normalised)
+        const firstExpense = detailModal[0]
+        const editHref = firstExpense?.transactionGroupId
+          ? `/calculator?transactionGroupId=${encodeURIComponent(firstExpense.transactionGroupId)}`
+          : firstExpense
+            ? `/calculator?expenseId=${encodeURIComponent(firstExpense.id)}`
+            : '/calculator'
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -922,16 +939,27 @@ export default function Dashboard() {
             <div className="relative bg-background text-foreground w-full max-w-md p-8 shadow-xl max-h-[85vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-8">
                 <h2 className="text-2xl font-bold">expenses</h2>
-                <button onClick={() => setDetailModal(null)} className="text-foreground/50 hover:text-foreground transition">
-                  <X className="h-5 w-5" />
-                </button>
+                <div className="flex items-center gap-4">
+                  <Link href={editHref} className="text-sm font-medium text-foreground/70 hover:text-foreground transition">
+                    edit in calculator
+                  </Link>
+                  <button onClick={() => setDetailModal(null)} className="text-foreground/50 hover:text-foreground transition">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
               </div>
 
               {/* Expenses list */}
               <div className="space-y-4 mb-10">
+                {firstExpense?.transactionGroupName && (
+                  <div className="border-b border-foreground/10 pb-4">
+                    <p className="text-xs font-bold uppercase tracking-[0.2em] text-foreground/50 mb-2">transaction</p>
+                    <p className="text-xl font-bold">{firstExpense.transactionGroupName}</p>
+                  </div>
+                )}
                 {detailModal.map(expense => {
                   const CatIcon = expense.category ? getCategoryIcon(expense.category) : null
-                  const totalPeople = expense.splitWith.includes(expense.paidBy) ? expense.splitWith.length : expense.splitWith.length + 1
+                  const totalPeople = getExpenseParticipantCount(expense)
                   return (
                     <div key={expense.id} className="flex items-start justify-between border-b border-foreground/10 pb-4">
                       <div>
@@ -943,7 +971,7 @@ export default function Dashboard() {
                           )}
                         </p>
                       </div>
-                      <p className="text-lg font-bold shrink-0 ml-4">₱{expense.amount.toFixed(2)}</p>
+                      <p className="text-lg font-bold shrink-0 ml-4">₱{getExpenseShare(expense).toFixed(2)}</p>
                     </div>
                   )
                 })}
@@ -1096,4 +1124,3 @@ export default function Dashboard() {
     </div>
   )
 }
-

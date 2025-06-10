@@ -1,30 +1,90 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { Suspense, useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { Trash2, LayoutDashboard, ChevronDown } from 'lucide-react'
 import { useSession } from 'next-auth/react'
 import { calculateSettlements, getExpenseTotals } from '@/lib/utils/settlements'
-import { createExpense, deleteExpense, getFriends, updateExpense } from '@/lib/api'
+import { createExpense, deleteExpense, getExpense, getExpenses, getFriends, updateExpense } from '@/lib/api'
 import type { Person, CalculatorExpense } from '@/lib/types'
 import { SiteHeader } from '@/components/layout/site-header'
 import { CATEGORIES, getCategoryIcon } from '@/lib/utils/categories'
 
 const initialPerson = { id: '1', name: 'You' }
-const CALCULATOR_STORAGE_KEY = 'budgtr-calculator-state'
 
 function isPersistedExpenseId(id: string | null): id is string {
   return !!id && /^[0-9a-fA-F]{24}$/.test(id)
 }
 
-type SavedCalculatorState = {
-  people: Person[]
-  expenses: CalculatorExpense[]
-  currency: string
-  currencyCode: string
+function buildCalculatorStateFromSavedExpenses(
+  savedExpenses: Array<{
+    id: string
+    name: string
+    amount: number
+    category?: string
+    paidBy: string
+    splitWith: string[]
+    sharedExpenseId?: string
+    transactionGroupId?: string
+    transactionGroupName?: string
+  }>,
+  sessionName: string | null | undefined,
+  friends: { id: string; name: string }[]
+) {
+  const friendByName = new Map(friends.map(friend => [friend.name, friend.id]))
+  const peopleByName = new Map<string, Person>()
+  const fallbackIds = new Map<string, string>()
+
+  const getPersonId = (name: string) => {
+    if (sessionName && name === sessionName) return initialPerson.id
+    const friendId = friendByName.get(name)
+    if (friendId) return friendId
+    if (!fallbackIds.has(name)) {
+      fallbackIds.set(name, `calc-${name.toLowerCase().replace(/\s+/g, '-')}`)
+    }
+    return fallbackIds.get(name)!
+  }
+
+  const registerPerson = (name: string) => {
+    const id = getPersonId(name)
+    if (!peopleByName.has(name)) {
+      peopleByName.set(name, { id, name })
+    }
+    return id
+  }
+
+  const expenses: CalculatorExpense[] = savedExpenses.map(expense => {
+    const paidById = registerPerson(expense.paidBy)
+    const splitWithIds = expense.splitWith.map(registerPerson)
+    const perPerson = expense.amount / splitWithIds.length
+
+    return {
+      id: expense.id,
+      name: expense.name,
+      amount: expense.amount,
+      category: expense.category,
+      paidBy: paidById,
+      splitWith: splitWithIds,
+      splitType: 'equal',
+      splitData: Object.fromEntries(splitWithIds.map(personId => [personId, perPerson])),
+      sharedExpenseId: expense.sharedExpenseId,
+      transactionGroupId: expense.transactionGroupId,
+      transactionGroupName: expense.transactionGroupName,
+    }
+  })
+
+  const currentUser = sessionName ? { id: initialPerson.id, name: sessionName } : initialPerson
+  const people = Array.from(peopleByName.values())
+  if (!people.find(person => person.id === currentUser.id)) {
+    people.unshift(currentUser)
+  }
+
+  return { people, expenses }
 }
 
-export default function Calculator() {
+function CalculatorPage() {
+  const searchParams = useSearchParams()
   const [people, setPeople] = useState<Person[]>([initialPerson])
   const [expenses, setExpenses] = useState<CalculatorExpense[]>([])
   const [newPersonName, setNewPersonName] = useState('')
@@ -41,10 +101,15 @@ export default function Calculator() {
   const [currencyCode, setCurrencyCode] = useState('PHP')
   const [splitDropdownOpen, setSplitDropdownOpen] = useState(false)
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null)
+  const [editingExpenseMeta, setEditingExpenseMeta] = useState<Pick<CalculatorExpense, 'sharedExpenseId' | 'transactionGroupId' | 'transactionGroupName'> | null>(null)
+  const [editingExpenseSnapshot, setEditingExpenseSnapshot] = useState<CalculatorExpense | null>(null)
   const { data: session, status } = useSession()
   const isLoggedIn = status === 'authenticated' && !!session
   const [saveError, setSaveError] = useState('')
   const [isSavingExpense, setIsSavingExpense] = useState(false)
+  const [isLoadingSavedExpense, setIsLoadingSavedExpense] = useState(false)
+  const [activeTransactionGroupId, setActiveTransactionGroupId] = useState<string | null>(null)
+  const [activeTransactionGroupName, setActiveTransactionGroupName] = useState('')
   const [editingPersonId, setEditingPersonId] = useState<string | null>(null)
   const [editingPersonName, setEditingPersonName] = useState('')
   const [friends, setFriends] = useState<{ id: string; name: string }[]>([])
@@ -55,6 +120,7 @@ export default function Calculator() {
   const paidByRef = useRef<HTMLDivElement>(null)
   const splitRef = useRef<HTMLDivElement>(null)
   const categoryRef = useRef<HTMLDivElement>(null)
+  const lastLoadedKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -69,49 +135,10 @@ export default function Calculator() {
   }, [])
 
   useEffect(() => {
-    const savedState = window.localStorage.getItem(CALCULATOR_STORAGE_KEY)
-    if (!savedState) return
-
-    try {
-      const parsed = JSON.parse(savedState) as Partial<SavedCalculatorState>
-
-      if (Array.isArray(parsed.people) && parsed.people.length > 0) {
-        setPeople(parsed.people)
-      }
-
-      if (Array.isArray(parsed.expenses)) {
-        setExpenses(parsed.expenses)
-      }
-
-      if (typeof parsed.currency === 'string') {
-        setCurrency(parsed.currency)
-      }
-
-      if (typeof parsed.currencyCode === 'string') {
-        setCurrencyCode(parsed.currencyCode)
-      }
-    } catch {
-      window.localStorage.removeItem(CALCULATOR_STORAGE_KEY)
-    }
-  }, [])
-
-  useEffect(() => {
     if (session?.user?.name) {
       setPeople(prev => prev.map(p => p.id === initialPerson.id ? { ...p, name: session.user!.name! } : p))
     }
   }, [session?.user?.name])
-
-  useEffect(() => {
-    window.localStorage.setItem(
-      CALCULATOR_STORAGE_KEY,
-      JSON.stringify({
-        people,
-        expenses,
-        currency,
-        currencyCode,
-      } satisfies SavedCalculatorState)
-    )
-  }, [people, expenses, currency, currencyCode])
 
   useEffect(() => {
     if (isLoggedIn) {
@@ -120,6 +147,72 @@ export default function Calculator() {
       setFriends([])
     }
   }, [isLoggedIn])
+
+  useEffect(() => {
+    const expenseId = searchParams.get('expenseId')
+    const transactionGroupId = searchParams.get('transactionGroupId')
+    const loadKey = expenseId ? `expense:${expenseId}` : transactionGroupId ? `group:${transactionGroupId}` : null
+
+    if (!loadKey || lastLoadedKeyRef.current === loadKey || !isLoggedIn) return
+
+    const loadSavedExpense = async () => {
+      try {
+        setIsLoadingSavedExpense(true)
+        setSaveError('')
+
+        let savedExpenses: Array<{
+          id: string
+          name: string
+          amount: number
+          category?: string
+          paidBy: string
+          splitWith: string[]
+          sharedExpenseId?: string
+          transactionGroupId?: string
+          transactionGroupName?: string
+        }> = []
+
+        if (expenseId) {
+          const expense = await getExpense(expenseId)
+          savedExpenses = [expense]
+        } else if (transactionGroupId) {
+          const allExpenses = await getExpenses({ dateRange: 'all' })
+          savedExpenses = allExpenses.filter(expense => expense.transactionGroupId === transactionGroupId)
+        }
+
+        if (savedExpenses.length === 0) {
+          setSaveError('saved expense not found')
+          return
+        }
+
+        const nextState = buildCalculatorStateFromSavedExpenses(
+          savedExpenses,
+          session?.user?.name,
+          friends
+        )
+
+        setPeople(nextState.people)
+        setExpenses(nextState.expenses)
+        setActiveTransactionGroupId(savedExpenses[0]?.transactionGroupId || null)
+        setActiveTransactionGroupName(savedExpenses[0]?.transactionGroupName || '')
+        setEditingExpenseId(null)
+        setEditingExpenseMeta(null)
+        setEditingExpenseSnapshot(null)
+        setNewExpenseName('')
+        setNewExpenseAmount('')
+        setNewExpenseCategory('')
+        setNewExpensePaidBy(nextState.people[0]?.id || initialPerson.id)
+        setNewExpenseSplitWith(nextState.people.map(person => person.id))
+        lastLoadedKeyRef.current = loadKey
+      } catch (err) {
+        setSaveError(err instanceof Error ? err.message : 'failed to load saved expense')
+      } finally {
+        setIsLoadingSavedExpense(false)
+      }
+    }
+
+    void loadSavedExpense()
+  }, [searchParams, isLoggedIn, session?.user?.name, friends])
 
   const addPerson = () => {
     if (newPersonName.trim()) {
@@ -131,7 +224,35 @@ export default function Calculator() {
   }
 
   const removePerson = (id: string) => {
-    setPeople(people.filter(p => p.id !== id))
+    const remainingPeople = people.filter(p => p.id !== id)
+    const fallbackPaidBy = remainingPeople[0]?.id || initialPerson.id
+
+    setPeople(remainingPeople)
+    setNewExpenseSplitWith(prev => {
+      const nextSplitWith = prev.filter(personId => personId !== id)
+      return nextSplitWith.length > 0 ? nextSplitWith : [fallbackPaidBy]
+    })
+    setNewExpensePaidBy(prev => (prev === id ? fallbackPaidBy : prev))
+    setFormErrors(prev => ({
+      ...prev,
+      splitWith: undefined,
+    }))
+    setExpenses(prev =>
+      prev
+        .map(expense => {
+          const nextSplitWith = expense.splitWith.filter(personId => personId !== id)
+          if (nextSplitWith.length === 0) return null
+          const paidBy = expense.paidBy === id ? nextSplitWith[0] : expense.paidBy
+          const perPerson = expense.amount / nextSplitWith.length
+          return {
+            ...expense,
+            paidBy,
+            splitWith: nextSplitWith,
+            splitData: Object.fromEntries(nextSplitWith.map(personId => [personId, perPerson])),
+          }
+        })
+        .filter((expense): expense is CalculatorExpense => expense !== null)
+    )
   }
 
   const startEditPerson = (person: Person) => {
@@ -172,6 +293,9 @@ export default function Calculator() {
       splitWith: newExpenseSplitWith,
       splitType: 'equal',
       splitData,
+      sharedExpenseId: editingExpenseMeta?.sharedExpenseId,
+      transactionGroupId: editingExpenseMeta?.transactionGroupId || activeTransactionGroupId || undefined,
+      transactionGroupName: editingExpenseMeta?.transactionGroupName || activeTransactionGroupName || undefined,
     }
 
     let savedExpenseId = localExpense.id
@@ -193,6 +317,7 @@ export default function Calculator() {
             paidBy: paidByName,
             splitWith: splitWithNames,
             category: localExpense.category,
+            transactionGroupName: localExpense.transactionGroupName,
             cascadeGroup: true,
           })
           savedExpenseId = editingExpenseId
@@ -204,9 +329,17 @@ export default function Calculator() {
             paidBy: paidByName,
             splitWith: splitWithNames,
             category: localExpense.category,
+            sharedExpenseId: localExpense.sharedExpenseId,
+            transactionGroupId: activeTransactionGroupId || undefined,
+            transactionGroupName: activeTransactionGroupName || undefined,
             sharedParticipantIds,
           })
           savedExpenseId = savedExpense.id
+          localExpense.sharedExpenseId = savedExpense.sharedExpenseId
+          localExpense.transactionGroupId = savedExpense.transactionGroupId
+          localExpense.transactionGroupName = savedExpense.transactionGroupName
+          setActiveTransactionGroupId(savedExpense.transactionGroupId || activeTransactionGroupId)
+          setActiveTransactionGroupName(savedExpense.transactionGroupName || activeTransactionGroupName)
         }
       } catch (err) {
         setSaveError(err instanceof Error ? err.message : 'failed to save expense')
@@ -225,6 +358,8 @@ export default function Calculator() {
       },
     ])
     setEditingExpenseId(null)
+    setEditingExpenseMeta(null)
+    setEditingExpenseSnapshot(null)
     setNewExpenseName('')
     setNewExpenseAmount('')
     setNewExpenseCategory('')
@@ -258,6 +393,12 @@ export default function Calculator() {
 
   const startEditExpense = (expense: CalculatorExpense) => {
     setEditingExpenseId(expense.id)
+    setEditingExpenseMeta({
+      sharedExpenseId: expense.sharedExpenseId,
+      transactionGroupId: expense.transactionGroupId,
+      transactionGroupName: expense.transactionGroupName,
+    })
+    setEditingExpenseSnapshot(expense)
     setNewExpenseName(expense.name)
     setNewExpenseAmount(expense.amount.toString())
     setNewExpenseCategory(expense.category || '')
@@ -268,6 +409,22 @@ export default function Calculator() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  const cancelEditExpense = () => {
+    if (editingExpenseSnapshot) {
+      setExpenses(prev => [...prev, editingExpenseSnapshot])
+    }
+    setEditingExpenseId(null)
+    setEditingExpenseMeta(null)
+    setEditingExpenseSnapshot(null)
+    setNewExpenseName('')
+    setNewExpenseAmount('')
+    setNewExpenseCategory('')
+    setNewExpensePaidBy(people[0]?.id || initialPerson.id)
+    setNewExpenseSplitWith(people.map(p => p.id))
+    setFormErrors({})
+    setSaveError('')
+  }
+
   const expenseTotals = getExpenseTotals(people, expenses)
   const settlements = calculateSettlements(people, expenses)
 
@@ -276,7 +433,7 @@ export default function Calculator() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-dvh bg-background text-foreground">
       <SiteHeader>
         <div className="relative" ref={currencyRef}>
           <button
@@ -308,6 +465,9 @@ export default function Calculator() {
 
       {/* Main Content */}
       <div className="mx-auto max-w-6xl p-6 md:p-8">
+        {isLoadingSavedExpense && (
+          <p className="mb-6 text-sm font-medium text-muted-foreground">loading saved expense...</p>
+        )}
         <div className="grid gap-16 lg:grid-cols-2">
           {/* People Section */}
           <div>
@@ -410,6 +570,18 @@ export default function Calculator() {
               <h2 className="text-4xl font-bold">Add Expense</h2>
             </div>
             <div className="space-y-6">
+              {(activeTransactionGroupId || people.length > 1) && (
+                <div>
+                  <label className="text-sm font-bold text-muted-foreground block mb-2">Transaction Name</label>
+                  <input
+                    type="text"
+                    placeholder="Weekend trip"
+                    value={activeTransactionGroupName}
+                    onChange={(e) => setActiveTransactionGroupName(e.target.value)}
+                    className="w-full bg-transparent text-lg font-bold outline-none border-b-2 border-muted-foreground/30 focus:border-foreground"
+                  />
+                </div>
+              )}
               <div>
                 <label className="text-sm font-bold text-muted-foreground block mb-2">What</label>
                 <input
@@ -542,6 +714,17 @@ export default function Calculator() {
               {saveError && <p className="text-xs text-red-500">{saveError}</p>}
 
               <div className="flex gap-3 mt-8">
+                {editingExpenseId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      cancelEditExpense()
+                    }}
+                    className="px-5 py-4 border border-foreground/20 text-foreground font-bold text-lg rounded-lg hover:bg-foreground/5 transition"
+                  >
+                    Cancel
+                  </button>
+                )}
                 <button
                   onClick={addExpense}
                   disabled={isSavingExpense}
@@ -570,6 +753,7 @@ export default function Calculator() {
                     <div>
                       <p className="text-xl font-bold">{expense.name}</p>
                       <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1 flex-wrap">
+                        {expense.transactionGroupName && <span>{expense.transactionGroupName} ·</span>}
                         <span>{getPersonName(expense.paidBy)} paid · {expense.splitWith.length} {expense.splitWith.length === 1 ? 'person' : 'people'}</span>
                         {expense.category && (() => { const Icon = getCategoryIcon(expense.category); return <span className="flex items-center gap-1">· {Icon && <Icon className="h-3 w-3" />}{expense.category}</span> })()}
                       </p>
@@ -641,5 +825,13 @@ export default function Calculator() {
       </div>
 
     </div>
+  )
+}
+
+export default function Calculator() {
+  return (
+    <Suspense>
+      <CalculatorPage />
+    </Suspense>
   )
 }

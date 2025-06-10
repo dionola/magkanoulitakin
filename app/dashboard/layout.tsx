@@ -19,7 +19,7 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-dvh bg-background">
       <header className="sticky top-0 z-50 border-b border-foreground/20 bg-background">
         <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
           <Link href="/calculator" className="text-xl font-bold tracking-tight text-foreground hover:opacity-70 transition">

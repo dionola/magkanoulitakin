@@ -6,6 +6,29 @@ import Expense from '@/lib/models/Expense'
 import { errorResponse, successResponse } from '@/lib/utils/errors'
 import { updateExpenseSchema } from '@/lib/validations/expense'
 
+function buildLegacySharedExpenseQuery(expense: {
+  transactionGroupId?: string
+  transactionGroupName?: string
+  name: string
+  amount: number
+  date: Date
+  category?: string
+  paidBy: string
+  splitWith: string[]
+  type: 'expense' | 'settlement'
+}) {
+  return {
+    transactionGroupId: expense.transactionGroupId,
+    name: expense.name,
+    amount: expense.amount,
+    date: expense.date,
+    category: expense.category,
+    paidBy: expense.paidBy,
+    splitWith: expense.splitWith,
+    type: expense.type,
+  }
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
@@ -40,9 +63,13 @@ export async function GET(
       amount: expense.amount,
       date: expense.date.toISOString().split('T')[0],
       budget: expense.budget,
+      category: expense.category,
       paidBy: expense.paidBy,
       splitWith: expense.splitWith,
       type: expense.type,
+      sharedExpenseId: expense.sharedExpenseId,
+      transactionGroupId: expense.transactionGroupId,
+      transactionGroupName: expense.transactionGroupName,
     })
   } catch (error) {
     return errorResponse(error)
@@ -85,9 +112,13 @@ export async function PUT(
       ...(validatedData.date && { date: new Date(validatedData.date) }),
     }
 
-    if (cascadeGroup && existingExpense.transactionGroupId) {
+    if (cascadeGroup && (existingExpense.sharedExpenseId || existingExpense.transactionGroupId)) {
+      const sharedQuery = existingExpense.sharedExpenseId
+        ? { sharedExpenseId: existingExpense.sharedExpenseId }
+        : buildLegacySharedExpenseQuery(existingExpense)
+
       await Expense.updateMany(
-        { transactionGroupId: existingExpense.transactionGroupId },
+        sharedQuery,
         updateDoc,
         { runValidators: true }
       )
@@ -117,9 +148,13 @@ export async function PUT(
       amount: expense.amount,
       date: expense.date.toISOString().split('T')[0],
       budget: expense.budget,
+      category: expense.category,
       paidBy: expense.paidBy,
       splitWith: expense.splitWith,
       type: expense.type,
+      sharedExpenseId: expense.sharedExpenseId,
+      transactionGroupId: expense.transactionGroupId,
+      transactionGroupName: expense.transactionGroupName,
     })
   } catch (error) {
     if (error instanceof Error && error.name === 'ZodError') {
@@ -161,14 +196,14 @@ export async function DELETE(
       return errorResponse(new Error('Expense not found'), 'Expense not found', 404)
     }
 
-    if (cascadeGroup && expense.transactionGroupId) {
-      const groupedExpenses = await Expense.find({
-        transactionGroupId: expense.transactionGroupId,
-      }).select('_id')
+    if (cascadeGroup && (expense.sharedExpenseId || expense.transactionGroupId)) {
+      const sharedQuery = expense.sharedExpenseId
+        ? { sharedExpenseId: expense.sharedExpenseId }
+        : buildLegacySharedExpenseQuery(expense)
 
-      await Expense.deleteMany({
-        transactionGroupId: expense.transactionGroupId,
-      })
+      const groupedExpenses = await Expense.find(sharedQuery).select('_id')
+
+      await Expense.deleteMany(sharedQuery)
 
       try {
         const ShareableLink = await import('@/lib/models/ShareableLink').then(m => m.default)

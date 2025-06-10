@@ -61,7 +61,7 @@ export default function SharedExpensePage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
+      <div className="min-h-dvh bg-background text-foreground flex items-center justify-center">
         <p className="text-foreground/50">loading...</p>
       </div>
     )
@@ -69,7 +69,7 @@ export default function SharedExpensePage() {
 
   if (error && !linkData) {
     return (
-      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
+      <div className="min-h-dvh bg-background text-foreground flex items-center justify-center">
         <div className="text-center">
           <p className="text-xl font-bold text-foreground mb-4">{error}</p>
           <Link href="/" className="text-foreground/70 hover:text-foreground transition-colors">
@@ -82,7 +82,7 @@ export default function SharedExpensePage() {
 
   if (!isAuthenticated && linkData?.requiresPassword) {
     return (
-      <div className="min-h-screen bg-background text-foreground flex items-center justify-center p-4">
+      <div className="min-h-dvh bg-background text-foreground flex items-center justify-center p-4">
         <div className="w-full max-w-md border border-foreground/20 bg-secondary p-8">
           <h2 className="text-2xl font-bold text-foreground mb-6">access shared expense</h2>
           {error && (
@@ -134,8 +134,11 @@ export default function SharedExpensePage() {
 
   if (isAuthenticated && linkData?.resource) {
     const resource = linkData.resource
+    const editHref = resource.transactionGroupId
+      ? `/calculator?transactionGroupId=${encodeURIComponent(resource.transactionGroupId)}`
+      : `/calculator?expenseId=${encodeURIComponent(resource.id)}`
     return (
-      <div className="min-h-screen bg-background text-foreground">
+      <div className="min-h-dvh bg-background text-foreground">
         <div className="mx-auto max-w-2xl px-6 py-12">
           <SiteHeader />
 
@@ -144,6 +147,12 @@ export default function SharedExpensePage() {
             
             {linkData.resourceType === 'expense' ? (
               <div className="space-y-4">
+                {resource.transactionGroupName && (
+                  <div>
+                    <p className="text-sm text-foreground/50 mb-1">transaction</p>
+                    <p className="text-lg text-foreground">{resource.transactionGroupName}</p>
+                  </div>
+                )}
                 <div>
                   <p className="text-sm text-foreground/50 mb-1">amount</p>
                   <p className="text-2xl font-bold text-foreground">₱{resource.amount.toFixed(2)}</p>
@@ -193,13 +202,23 @@ export default function SharedExpensePage() {
             )}
 
             <div className="mt-8 pt-8 border-t border-foreground/20">
-              <p className="text-sm text-foreground/50 mb-4">this is a shared expense. you can view it but cannot edit it here.</p>
-              <Link
-                href="/"
-                className="inline-block border-2 border-foreground/30 py-2 px-6 text-base font-medium text-foreground/70 transition-colors hover:border-foreground hover:text-foreground"
-              >
-                go to calculator
-              </Link>
+              <p className="text-sm text-foreground/50 mb-4">shared expenses are edited in the calculator.</p>
+              <div className="flex flex-wrap gap-3">
+                {session && (
+                  <Link
+                    href={editHref}
+                    className="inline-block border-2 border-foreground py-2 px-6 text-base font-medium text-foreground transition-colors hover:bg-foreground hover:text-background"
+                  >
+                    edit in calculator
+                  </Link>
+                )}
+                <Link
+                  href="/"
+                  className="inline-block border-2 border-foreground/30 py-2 px-6 text-base font-medium text-foreground/70 transition-colors hover:border-foreground hover:text-foreground"
+                >
+                  go to calculator
+                </Link>
+              </div>
             </div>
           </div>
         </div>

@@ -9,13 +9,13 @@ export const createExpenseSchema = z.object({
   paidBy: z.string().min(1, 'Paid by is required'),
   splitWith: z.array(z.string()).min(1, 'At least one person must be included in split'),
   type: z.enum(['expense', 'settlement']).default('expense'),
+  sharedExpenseId: z.string().optional(),
   transactionGroupId: z.string().optional(),
+  transactionGroupName: z.string().trim().min(1).optional(),
 })
 
 export const updateExpenseSchema = createExpenseSchema.partial()
 
 export type CreateExpenseInput = z.infer<typeof createExpenseSchema>
 export type UpdateExpenseInput = z.infer<typeof updateExpenseSchema>
-
-
 

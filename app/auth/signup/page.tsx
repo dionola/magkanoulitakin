@@ -69,7 +69,7 @@ export default function SignUp() {
   }
 
   return (
-    <main className="min-h-screen bg-background">
+    <main className="min-h-dvh bg-background">
       <SiteHeader />
 
       <div className="flex flex-1 flex-col items-center justify-center px-6 pt-16">

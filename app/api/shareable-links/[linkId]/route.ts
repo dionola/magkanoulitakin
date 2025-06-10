@@ -64,6 +64,8 @@ export async function GET(
           category: resource.category,
           paidBy: resource.paidBy,
           splitWith: resource.splitWith,
+          transactionGroupId: resource.transactionGroupId,
+          transactionGroupName: resource.transactionGroupName,
         } : {
           frequency: resource.frequency,
           category: resource.category,
