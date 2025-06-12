@@ -10,6 +10,15 @@
 # production
 /build
 
+# local artifacts
+.DS_Store
+coverage/
+test-results/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
 # debug
 npm-debug.log*
 yarn-debug.log*
