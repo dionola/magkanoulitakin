@@ -2,11 +2,11 @@
 
 import { Suspense, useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Trash2, LayoutDashboard, ChevronDown } from 'lucide-react'
 import { useSession } from 'next-auth/react'
 import { calculateSettlements, getExpenseTotals } from '@/lib/utils/settlements'
-import { createExpense, deleteExpense, getExpense, getExpenses, getFriends, updateExpense } from '@/lib/api'
+import { createExpense, deleteExpense, getExpense, getExpenses, getFriends, updateExpense, updateTransactionGroupName } from '@/lib/api'
 import type { Person, CalculatorExpense } from '@/lib/types'
 import { SiteHeader } from '@/components/layout/site-header'
 import { CATEGORIES, getCategoryIcon } from '@/lib/utils/categories'
@@ -84,6 +84,7 @@ function buildCalculatorStateFromSavedExpenses(
 }
 
 function CalculatorPage() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const [people, setPeople] = useState<Person[]>([initialPerson])
   const [expenses, setExpenses] = useState<CalculatorExpense[]>([])
@@ -108,8 +109,10 @@ function CalculatorPage() {
   const [saveError, setSaveError] = useState('')
   const [isSavingExpense, setIsSavingExpense] = useState(false)
   const [isLoadingSavedExpense, setIsLoadingSavedExpense] = useState(false)
+  const [isUpdatingTransactionName, setIsUpdatingTransactionName] = useState(false)
   const [activeTransactionGroupId, setActiveTransactionGroupId] = useState<string | null>(null)
   const [activeTransactionGroupName, setActiveTransactionGroupName] = useState('')
+  const [transactionNameInput, setTransactionNameInput] = useState('')
   const [editingPersonId, setEditingPersonId] = useState<string | null>(null)
   const [editingPersonName, setEditingPersonName] = useState('')
   const [friends, setFriends] = useState<{ id: string; name: string }[]>([])
@@ -195,6 +198,7 @@ function CalculatorPage() {
         setExpenses(nextState.expenses)
         setActiveTransactionGroupId(savedExpenses[0]?.transactionGroupId || null)
         setActiveTransactionGroupName(savedExpenses[0]?.transactionGroupName || '')
+        setTransactionNameInput(savedExpenses[0]?.transactionGroupName || '')
         setEditingExpenseId(null)
         setEditingExpenseMeta(null)
         setEditingExpenseSnapshot(null)
@@ -266,6 +270,53 @@ function CalculatorPage() {
     setEditingPersonId(null)
   }
 
+  const resetCalculatorForNewTransaction = () => {
+    const currentUser = session?.user?.name
+      ? { id: initialPerson.id, name: session.user.name }
+      : initialPerson
+
+    setPeople([currentUser])
+    setExpenses([])
+    setNewPersonName('')
+    setNewExpenseName('')
+    setNewExpenseAmount('')
+    setNewExpenseCategory('')
+    setNewExpensePaidBy(currentUser.id)
+    setNewExpenseSplitWith([currentUser.id])
+    setFormErrors({})
+    setEditingExpenseId(null)
+    setEditingExpenseMeta(null)
+    setEditingExpenseSnapshot(null)
+    setSaveError('')
+    setActiveTransactionGroupId(null)
+    setActiveTransactionGroupName('')
+    setTransactionNameInput('')
+    lastLoadedKeyRef.current = null
+    router.replace('/calculator')
+  }
+
+  const updateTransactionNameEverywhere = async () => {
+    const nextName = transactionNameInput.trim()
+    if (!activeTransactionGroupId || !nextName || nextName === activeTransactionGroupName) return
+
+    setSaveError('')
+    setIsUpdatingTransactionName(true)
+    try {
+      await updateTransactionGroupName(activeTransactionGroupId, {
+        transactionGroupName: nextName,
+      })
+      setActiveTransactionGroupName(nextName)
+      setExpenses(prev => prev.map(expense => ({
+        ...expense,
+        transactionGroupName: expense.transactionGroupId === activeTransactionGroupId ? nextName : expense.transactionGroupName,
+      })))
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'failed to update transaction name')
+    } finally {
+      setIsUpdatingTransactionName(false)
+    }
+  }
+
   const addExpense = async () => {
     const errors: typeof formErrors = {}
     if (!newExpenseName.trim()) errors.name = 'name is required'
@@ -295,7 +346,7 @@ function CalculatorPage() {
       splitData,
       sharedExpenseId: editingExpenseMeta?.sharedExpenseId,
       transactionGroupId: editingExpenseMeta?.transactionGroupId || activeTransactionGroupId || undefined,
-      transactionGroupName: editingExpenseMeta?.transactionGroupName || activeTransactionGroupName || undefined,
+      transactionGroupName: editingExpenseMeta?.transactionGroupName || activeTransactionGroupName || transactionNameInput.trim() || undefined,
     }
 
     let savedExpenseId = localExpense.id
@@ -317,7 +368,7 @@ function CalculatorPage() {
             paidBy: paidByName,
             splitWith: splitWithNames,
             category: localExpense.category,
-            transactionGroupName: localExpense.transactionGroupName,
+            transactionGroupName: activeTransactionGroupName || undefined,
             cascadeGroup: true,
           })
           savedExpenseId = editingExpenseId
@@ -331,7 +382,7 @@ function CalculatorPage() {
             category: localExpense.category,
             sharedExpenseId: localExpense.sharedExpenseId,
             transactionGroupId: activeTransactionGroupId || undefined,
-            transactionGroupName: activeTransactionGroupName || undefined,
+            transactionGroupName: transactionNameInput.trim() || undefined,
             sharedParticipantIds,
           })
           savedExpenseId = savedExpense.id
@@ -339,7 +390,8 @@ function CalculatorPage() {
           localExpense.transactionGroupId = savedExpense.transactionGroupId
           localExpense.transactionGroupName = savedExpense.transactionGroupName
           setActiveTransactionGroupId(savedExpense.transactionGroupId || activeTransactionGroupId)
-          setActiveTransactionGroupName(savedExpense.transactionGroupName || activeTransactionGroupName)
+          setActiveTransactionGroupName(savedExpense.transactionGroupName || transactionNameInput.trim() || activeTransactionGroupName)
+          setTransactionNameInput(savedExpense.transactionGroupName || transactionNameInput.trim() || activeTransactionGroupName)
         }
       } catch (err) {
         setSaveError(err instanceof Error ? err.message : 'failed to save expense')
@@ -427,6 +479,9 @@ function CalculatorPage() {
 
   const expenseTotals = getExpenseTotals(people, expenses)
   const settlements = calculateSettlements(people, expenses)
+  const hasPendingTransactionNameChange = !!activeTransactionGroupId &&
+    transactionNameInput.trim().length > 0 &&
+    transactionNameInput.trim() !== activeTransactionGroupName
 
   const getPersonName = (id: string) => {
     return people.find(p => p.id === id)?.name || 'Unknown'
@@ -570,16 +625,26 @@ function CalculatorPage() {
               <h2 className="text-4xl font-bold">Add Expense</h2>
             </div>
             <div className="space-y-6">
-              {(activeTransactionGroupId || people.length > 1) && (
+              {(activeTransactionGroupId || people.length > 1 || expenses.length > 0) && (
                 <div>
                   <label className="text-sm font-bold text-muted-foreground block mb-2">Transaction Name</label>
                   <input
                     type="text"
                     placeholder="Weekend trip"
-                    value={activeTransactionGroupName}
-                    onChange={(e) => setActiveTransactionGroupName(e.target.value)}
+                    value={transactionNameInput}
+                    onChange={(e) => setTransactionNameInput(e.target.value)}
                     className="w-full bg-transparent text-lg font-bold outline-none border-b-2 border-muted-foreground/30 focus:border-foreground"
                   />
+                  {hasPendingTransactionNameChange && (
+                    <button
+                      type="button"
+                      onClick={() => void updateTransactionNameEverywhere()}
+                      disabled={isUpdatingTransactionName}
+                      className="mt-3 text-sm font-bold text-foreground/70 hover:text-foreground transition disabled:opacity-50"
+                    >
+                      {isUpdatingTransactionName ? 'Updating transaction name...' : 'Update transaction name everywhere'}
+                    </button>
+                  )}
                 </div>
               )}
               <div>
@@ -714,6 +779,15 @@ function CalculatorPage() {
               {saveError && <p className="text-xs text-red-500">{saveError}</p>}
 
               <div className="flex gap-3 mt-8">
+                {isLoggedIn && (activeTransactionGroupId || expenses.length > 0) && (
+                  <button
+                    type="button"
+                    onClick={resetCalculatorForNewTransaction}
+                    className="px-5 py-4 border border-foreground/20 text-foreground font-bold text-lg rounded-lg hover:bg-foreground/5 transition"
+                  >
+                    New Transaction
+                  </button>
+                )}
                 {editingExpenseId && (
                   <button
                     type="button"
@@ -753,7 +827,6 @@ function CalculatorPage() {
                     <div>
                       <p className="text-xl font-bold">{expense.name}</p>
                       <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1 flex-wrap">
-                        {expense.transactionGroupName && <span>{expense.transactionGroupName} ·</span>}
                         <span>{getPersonName(expense.paidBy)} paid · {expense.splitWith.length} {expense.splitWith.length === 1 ? 'person' : 'people'}</span>
                         {expense.category && (() => { const Icon = getCategoryIcon(expense.category); return <span className="flex items-center gap-1">· {Icon && <Icon className="h-3 w-3" />}{expense.category}</span> })()}
                       </p>

@@ -62,6 +62,7 @@ test('covers shared expense creation, friend visibility, editing, adding partici
 
   await addPersonToCalculator(alexPage, 'Jordan')
   await addPersonToCalculator(alexPage, 'Riley')
+  await alexPage.getByPlaceholder('Weekend trip').fill('Beach weekend')
 
   await createCalculatorExpense(alexPage, {
     name: 'Trip dinner',
@@ -98,23 +99,48 @@ test('covers shared expense creation, friend visibility, editing, adding partici
     category: 'transport',
   })
   await expect(jordanPage.getByText('Taxi home')).toBeVisible()
+  await expect(jordanPage.getByPlaceholder('Weekend trip')).toHaveValue('Beach weekend')
+  await jordanPage.getByPlaceholder('Weekend trip').fill('Beach week')
+  await jordanPage.getByRole('button', { name: 'Update transaction name everywhere' }).click()
+  await expect(jordanPage.getByPlaceholder('Weekend trip')).toHaveValue('Beach week')
+  await expect(jordanPage.getByText('Beach week')).toHaveCount(0)
+  await jordanPage.getByRole('button', { name: 'New Transaction' }).click()
+  await expect(jordanPage).toHaveURL(/\/calculator$/)
+  await expect(jordanPage.getByPlaceholder('Weekend trip')).toHaveCount(0)
+  await addPersonToCalculator(jordanPage, 'Sam')
+  await jordanPage.getByPlaceholder('Weekend trip').fill('Office lunch')
+  await createCalculatorExpense(jordanPage, {
+    name: 'Pizza',
+    amount: '450',
+    category: 'food',
+  })
+  await expect(jordanPage.getByText('Pizza')).toBeVisible()
 
   const alexVerifyPage = await browser.newPage()
   await signIn(alexVerifyPage, 'test@test.com')
   const alexSharedExpenses = await getExpensesViaApi(alexVerifyPage)
   const alexTripDinner = alexSharedExpenses.find((expense: any) => expense.name === 'Trip dinner')
   const alexTaxiHome = alexSharedExpenses.find((expense: any) => expense.name === 'Taxi home')
+  const alexPizza = alexSharedExpenses.find((expense: any) => expense.name === 'Pizza')
 
   expect(alexTripDinner?.amount).toBe(1200)
   expect(alexTripDinner?.category).toBe('travel')
   expect(alexTripDinner?.transactionGroupId).toBe(tripDinner.transactionGroupId)
+  expect(alexTripDinner?.transactionGroupName).toBe('Beach week')
   expect(alexTaxiHome?.transactionGroupId).toBe(tripDinner.transactionGroupId)
+  expect(alexTaxiHome?.transactionGroupName).toBe('Beach week')
+  expect(alexPizza?.transactionGroupId).toBeTruthy()
+  expect(alexPizza?.transactionGroupId).not.toBe(tripDinner.transactionGroupId)
+  expect(alexPizza?.transactionGroupName).toBe('Office lunch')
 
   const samPage = await browser.newPage()
   await signIn(samPage, 'test2@test.com')
   const samExpenses = await getExpensesViaApi(samPage)
   const samTaxiHome = samExpenses.find((expense: any) => expense.name === 'Taxi home')
+  const samPizza = samExpenses.find((expense: any) => expense.name === 'Pizza')
   expect(samTaxiHome?.transactionGroupId).toBe(tripDinner.transactionGroupId)
+  expect(samTaxiHome?.transactionGroupName).toBe('Beach week')
+  expect(samPizza?.transactionGroupName).toBe('Office lunch')
 
   await alexVerifyPage.goto('/dashboard')
   await expect(alexVerifyPage.getByText(/2 shared purchases/i)).toBeVisible()

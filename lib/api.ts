@@ -100,6 +100,16 @@ export function deleteExpense(id: string, options?: { cascadeGroup?: boolean }):
   })
 }
 
+export function updateTransactionGroupName(
+  transactionGroupId: string,
+  body: { transactionGroupName: string }
+): Promise<{ transactionGroupId: string; transactionGroupName: string }> {
+  return request(`/api/transaction-groups/${transactionGroupId}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  })
+}
+
 // --- Friends ---
 export function getFriends(): Promise<Friend[]> {
   return request<Friend[]>('/api/friends')
