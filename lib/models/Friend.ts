@@ -1,6 +1,7 @@
 import mongoose, { Schema, Model } from 'mongoose'
 
 export interface IFriend extends mongoose.Document {
+  _id: mongoose.Types.ObjectId
   userId: mongoose.Types.ObjectId
   friendId: mongoose.Types.ObjectId
   status: 'pending' | 'accepted'

@@ -70,6 +70,7 @@ export function createExpense(body: {
   transactionGroupId?: string
   transactionGroupName?: string
   sharedParticipantIds?: string[]
+  shareLinkId?: string
 }): Promise<Expense> {
   return request<Expense>('/api/expenses', {
     method: 'POST',
@@ -77,14 +78,17 @@ export function createExpense(body: {
   })
 }
 
-export function getExpense(id: string): Promise<Expense> {
-  return request<Expense>(`/api/expenses/${id}`)
+export function getExpense(id: string, options?: { shareLinkId?: string }): Promise<Expense> {
+  return request<Expense>(`/api/expenses/${id}`, options?.shareLinkId ? {
+    params: { shareLinkId: options.shareLinkId },
+  } : undefined)
 }
 
 export function updateExpense(
   id: string,
   body: Partial<{ name: string; amount: number; date: string; paidBy: string; splitWith: string[]; budget?: string; category?: string; transactionGroupName?: string }> & {
     cascadeGroup?: boolean
+    shareLinkId?: string
   }
 ): Promise<Expense> {
   return request<Expense>(`/api/expenses/${id}`, {
@@ -93,7 +97,7 @@ export function updateExpense(
   })
 }
 
-export function deleteExpense(id: string, options?: { cascadeGroup?: boolean }): Promise<void> {
+export function deleteExpense(id: string, options?: { cascadeGroup?: boolean; shareLinkId?: string }): Promise<void> {
   return request(`/api/expenses/${id}`, {
     method: 'DELETE',
     ...(options ? { body: JSON.stringify(options) } : {}),
@@ -102,12 +106,21 @@ export function deleteExpense(id: string, options?: { cascadeGroup?: boolean }):
 
 export function updateTransactionGroupName(
   transactionGroupId: string,
-  body: { transactionGroupName: string }
+  body: { transactionGroupName: string; shareLinkId?: string }
 ): Promise<{ transactionGroupId: string; transactionGroupName: string }> {
   return request(`/api/transaction-groups/${transactionGroupId}`, {
     method: 'PUT',
     body: JSON.stringify(body),
   })
+}
+
+export function getShareableTransaction(linkId: string): Promise<{
+  linkId: string
+  transactionGroupId?: string
+  transactionGroupName?: string
+  expenses: Expense[]
+}> {
+  return request(`/api/shareable-links/${linkId}/transaction`)
 }
 
 // --- Friends ---

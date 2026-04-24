@@ -15,8 +15,8 @@ export function PageLoading({ title, subtitle, invert = false }: PageLoadingProp
       <div className="mx-auto max-w-6xl px-6 py-12 md:px-8">
         <div className="mb-12">
           <div className={`h-4 w-28 rounded-full ${shimmerClass} animate-pulse mb-4`} />
-          <div className={`h-12 w-64 rounded-full ${shimmerClass} animate-pulse mb-3`} />
-          <p className={`text-sm font-medium ${mutedClass}`}>{subtitle ?? 'loading data...'}</p>
+          <div className={`h-12 w-64 rounded-full ${shimmerClass} animate-pulse mb-4`} />
+          <div className={`h-5 w-5 rounded-full ${shimmerClass} animate-pulse`} />
         </div>
 
         <div className="grid gap-8 lg:grid-cols-[1.2fr,0.8fr]">

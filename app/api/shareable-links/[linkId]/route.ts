@@ -1,20 +1,20 @@
 import { NextRequest } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/auth'
 import connectDB from '@/lib/db'
 import ShareableLink from '@/lib/models/ShareableLink'
 import Expense from '@/lib/models/Expense'
-import Friend from '@/lib/models/Friend'
 import { errorResponse, successResponse } from '@/lib/utils/errors'
 import bcrypt from 'bcryptjs'
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { linkId: string } }
+  context: { params: Promise<{ linkId: string }> }
 ) {
   try {
+    const { linkId } = await context.params
     await connectDB()
-    const link = await ShareableLink.findOne({ linkId: params.linkId, isActive: true })
+    const link = await ShareableLink.findOne({ linkId, isActive: true })
 
     if (!link) {
       return errorResponse(new Error('Link not found'), 'Link not found', 404)
@@ -26,12 +26,7 @@ export async function GET(
     }
 
     // Get resource
-    let resource: any = null
-    if (link.resourceType === 'expense') {
-      resource = await Expense.findById(link.resourceId).lean()
-    } else if (link.resourceType === 'recurring-expense') {
-      resource = await RecurringExpense.findById(link.resourceId).lean()
-    }
+    const resource = await Expense.findById(link.resourceId).lean()
 
     if (!resource) {
       return errorResponse(new Error('Resource not found'), 'Resource not found', 404)
@@ -59,19 +54,12 @@ export async function GET(
         id: resource._id.toString(),
         name: resource.name,
         amount: resource.amount,
-        ...(link.resourceType === 'expense' ? {
-          date: resource.date?.toISOString().split('T')[0],
-          category: resource.category,
-          paidBy: resource.paidBy,
-          splitWith: resource.splitWith,
-          transactionGroupId: resource.transactionGroupId,
-          transactionGroupName: resource.transactionGroupName,
-        } : {
-          frequency: resource.frequency,
-          category: resource.category,
-          dayOfMonth: resource.dayOfMonth,
-          dayOfWeek: resource.dayOfWeek,
-        }),
+        date: resource.date?.toISOString().split('T')[0],
+        category: resource.category,
+        paidBy: resource.paidBy,
+        splitWith: resource.splitWith,
+        transactionGroupId: resource.transactionGroupId,
+        transactionGroupName: resource.transactionGroupName,
       },
     })
   } catch (error) {
@@ -81,14 +69,15 @@ export async function GET(
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { linkId: string } }
+  context: { params: Promise<{ linkId: string }> }
 ) {
   try {
+    const { linkId } = await context.params
     await connectDB()
     const body = await req.json()
     const { password } = body
 
-    const link = await ShareableLink.findOne({ linkId: params.linkId, isActive: true })
+    const link = await ShareableLink.findOne({ linkId, isActive: true })
 
     if (!link) {
       return errorResponse(new Error('Link not found'), 'Link not found', 404)
@@ -113,12 +102,7 @@ export async function POST(
     // If friend, no password needed
     if (isFriend) {
       // Get resource
-      let resource: any = null
-      if (link.resourceType === 'expense') {
-        resource = await Expense.findById(link.resourceId).lean()
-      } else if (link.resourceType === 'recurring-expense') {
-        resource = await RecurringExpense.findById(link.resourceId).lean()
-      }
+      const resource = await Expense.findById(link.resourceId).lean()
 
       if (!resource) {
         return errorResponse(new Error('Resource not found'), 'Resource not found', 404)
@@ -147,12 +131,7 @@ export async function POST(
     }
 
     // Get resource
-    let resource: any = null
-    if (link.resourceType === 'expense') {
-      resource = await Expense.findById(link.resourceId).lean()
-    } else if (link.resourceType === 'recurring-expense') {
-      resource = await RecurringExpense.findById(link.resourceId).lean()
-    }
+    const resource = await Expense.findById(link.resourceId).lean()
 
     if (!resource) {
       return errorResponse(new Error('Resource not found'), 'Resource not found', 404)

@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/auth'
 import connectDB from '@/lib/db'
 import User from '@/lib/models/User'
 import Friend from '@/lib/models/Friend'
@@ -8,9 +8,10 @@ import { errorResponse, successResponse } from '@/lib/utils/errors'
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params
     const session = await getServerSession(authOptions)
     
     if (!session?.user?.email) {
@@ -27,8 +28,8 @@ export async function DELETE(
     // Find the friend connection (check both directions)
     const friend = await Friend.findOne({
       $or: [
-        { _id: params.id, userId: user._id },
-        { _id: params.id, friendId: user._id },
+        { _id: id, userId: user._id },
+        { _id: id, friendId: user._id },
       ],
     })
 
@@ -36,7 +37,7 @@ export async function DELETE(
       return errorResponse(new Error('Friend connection not found'), 'Friend connection not found', 404)
     }
 
-    await Friend.deleteOne({ _id: params.id })
+    await Friend.deleteOne({ _id: id })
 
     // Also delete reciprocal connection if it exists
     await Friend.deleteOne({

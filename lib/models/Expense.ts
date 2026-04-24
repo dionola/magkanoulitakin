@@ -1,7 +1,8 @@
 import mongoose, { Schema, Model } from 'mongoose'
 
 export interface IExpense extends mongoose.Document {
-  userId: mongoose.Types.ObjectId
+  _id: mongoose.Types.ObjectId
+  userId?: mongoose.Types.ObjectId
   name: string
   amount: number
   date: Date
@@ -22,7 +23,6 @@ const ExpenseSchema = new Schema<IExpense>(
     userId: {
       type: Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
       index: true,
     },
     name: {
@@ -81,4 +81,3 @@ ExpenseSchema.index({ userId: 1, date: -1 })
 const Expense: Model<IExpense> = mongoose.models.Expense || mongoose.model<IExpense>('Expense', ExpenseSchema)
 
 export default Expense
-

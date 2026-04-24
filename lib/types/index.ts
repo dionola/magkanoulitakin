@@ -16,6 +16,7 @@ export interface Expense {
   sharedExpenseId?: string
   transactionGroupId?: string
   transactionGroupName?: string
+  shareLinkId?: string
 }
 
 export interface Friend {
@@ -71,4 +72,5 @@ export interface CalculatorExpense {
   sharedExpenseId?: string
   transactionGroupId?: string
   transactionGroupName?: string
+  shareLinkId?: string
 }

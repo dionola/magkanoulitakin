@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Mail, Lock } from 'lucide-react'
 import { SiteHeader } from '@/components/layout/site-header'
+import { Spinner } from '@/components/ui/spinner'
 
 const inputClass = "flex-1 bg-transparent pb-3 text-lg text-foreground placeholder:text-foreground/40 focus:outline-none"
 
@@ -81,9 +82,9 @@ function SignInForm() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full border-2 border-foreground py-3 text-base font-medium text-foreground transition-colors hover:bg-foreground hover:text-background"
+              className="w-full border-2 border-foreground py-3 text-base font-medium text-foreground transition-colors hover:bg-foreground hover:text-background disabled:opacity-60 flex items-center justify-center"
             >
-              {isLoading ? 'signing in...' : 'sign in'}
+              {isLoading ? <Spinner /> : 'sign in'}
             </button>
           </form>
 

@@ -6,6 +6,8 @@ import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { getShareableLink, authenticateShareableLink } from '@/lib/api'
 import { SiteHeader } from '@/components/layout/site-header'
+import { PageLoading } from '@/components/ui/page-loading'
+import { Spinner } from '@/components/ui/spinner'
 
 export default function SharedExpensePage() {
   const params = useParams()
@@ -46,7 +48,7 @@ export default function SharedExpensePage() {
       setError(null)
       const data = await authenticateShareableLink(linkId, password)
       setIsAuthenticated(true)
-      setLinkData((prev) => (prev ? { ...prev, resource: data.resource } : prev))
+      setLinkData((prev: any) => (prev ? { ...prev, resource: data.resource } : prev))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid password')
     } finally {
@@ -60,11 +62,7 @@ export default function SharedExpensePage() {
   }
 
   if (isLoading) {
-    return (
-      <div className="min-h-dvh bg-background text-foreground flex items-center justify-center">
-        <p className="text-foreground/50">loading...</p>
-      </div>
-    )
+    return <PageLoading title="shared expense" />
   }
 
   if (error && !linkData) {
@@ -110,9 +108,9 @@ export default function SharedExpensePage() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="flex-1 border-2 border-foreground py-3 text-base font-medium text-foreground transition-colors hover:bg-foreground hover:text-foreground disabled:opacity-50"
+                className="flex-1 border-2 border-foreground py-3 text-base font-medium text-foreground transition-colors hover:bg-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center"
               >
-                {isSubmitting ? 'authenticating...' : 'access'}
+                {isSubmitting ? <Spinner /> : 'access'}
               </button>
             </div>
           </form>
@@ -134,9 +132,7 @@ export default function SharedExpensePage() {
 
   if (isAuthenticated && linkData?.resource) {
     const resource = linkData.resource
-    const editHref = resource.transactionGroupId
-      ? `/calculator?transactionGroupId=${encodeURIComponent(resource.transactionGroupId)}`
-      : `/calculator?expenseId=${encodeURIComponent(resource.id)}`
+    const editHref = `/calculator?shareLinkId=${encodeURIComponent(linkId)}`
     return (
       <div className="min-h-dvh bg-background text-foreground">
         <div className="mx-auto max-w-2xl px-6 py-12">
@@ -204,14 +200,12 @@ export default function SharedExpensePage() {
             <div className="mt-8 pt-8 border-t border-foreground/20">
               <p className="text-sm text-foreground/50 mb-4">shared expenses are edited in the calculator.</p>
               <div className="flex flex-wrap gap-3">
-                {session && (
-                  <Link
-                    href={editHref}
-                    className="inline-block border-2 border-foreground py-2 px-6 text-base font-medium text-foreground transition-colors hover:bg-foreground hover:text-background"
-                  >
-                    edit in calculator
-                  </Link>
-                )}
+                <Link
+                  href={editHref}
+                  className="inline-block border-2 border-foreground py-2 px-6 text-base font-medium text-foreground transition-colors hover:bg-foreground hover:text-background"
+                >
+                  edit in calculator
+                </Link>
                 <Link
                   href="/"
                   className="inline-block border-2 border-foreground/30 py-2 px-6 text-base font-medium text-foreground/70 transition-colors hover:border-foreground hover:text-foreground"

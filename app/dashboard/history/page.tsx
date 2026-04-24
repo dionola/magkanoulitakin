@@ -9,6 +9,22 @@ import { useTheme } from '@/components/providers/theme-provider'
 import { CATEGORIES, getCategoryIcon } from '@/lib/utils/categories'
 import { getExpenseShare } from '@/lib/utils/expense-shares'
 
+function HistoryListSkeleton() {
+  const shimmerClass = 'bg-background/10'
+
+  return (
+    <div className="space-y-4">
+      {Array.from({ length: 5 }).map((_, index) => (
+        <div key={index} className="border-b border-background/20 pb-4">
+          <div className={`h-6 w-44 rounded-full ${shimmerClass} animate-pulse mb-2`} />
+          <div className={`h-4 w-64 rounded-full ${shimmerClass} animate-pulse mb-3`} />
+          <div className={`h-8 w-24 rounded-full ${shimmerClass} animate-pulse`} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function HistoryPage() {
   const { darkMode } = useTheme()
   const [dateRange, setDateRange] = useState<'thisMonth' | 'lastMonth' | 'thisYear' | 'all'>('all')
@@ -145,7 +161,7 @@ export default function HistoryPage() {
 
           <div className="space-y-4">
             {isLoading ? (
-              <p className="text-background/50 text-sm">loading...</p>
+              <HistoryListSkeleton />
             ) : sortedFiltered.length === 0 ? (
               <p className="text-background/50 text-sm">no expenses in this period</p>
             ) : (

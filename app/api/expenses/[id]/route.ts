@@ -1,8 +1,9 @@
 import { NextRequest } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/lib/auth'
 import connectDB from '@/lib/db'
 import Expense from '@/lib/models/Expense'
+import ShareableLink from '@/lib/models/ShareableLink'
 import { errorResponse, successResponse } from '@/lib/utils/errors'
 import { updateExpenseSchema } from '@/lib/validations/expense'
 
@@ -29,33 +30,64 @@ function buildLegacySharedExpenseQuery(expense: {
   }
 }
 
+async function resolveAuthorizedExpenseAccess(expenseId: string, shareLinkId?: string) {
+  const session = await getServerSession(authOptions)
+  const User = await import('@/lib/models/User').then(m => m.default)
+  const user = session?.user?.email
+    ? await User.findOne({ email: session.user.email })
+    : null
+
+  if (user) {
+    const expense = await Expense.findOne({ _id: expenseId, userId: user._id })
+    return { expense, user }
+  }
+
+  if (!shareLinkId) {
+    return { expense: null, user: null }
+  }
+
+  const shareLink = await ShareableLink.findOne({ linkId: shareLinkId, isActive: true })
+  if (!shareLink) {
+    return { expense: null, user: null }
+  }
+
+  const linkedExpense = await Expense.findById(shareLink.resourceId)
+  if (!linkedExpense) {
+    return { expense: null, user: null }
+  }
+
+  const expense = await Expense.findById(expenseId)
+  if (!expense) {
+    return { expense: null, user: null }
+  }
+
+  const sameTransaction = linkedExpense.transactionGroupId
+    ? expense.transactionGroupId === linkedExpense.transactionGroupId
+    : expense._id.toString() === linkedExpense._id.toString()
+
+  return { expense: sameTransaction ? expense : null, user: null }
+}
+
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user?.email) {
-      return errorResponse(new Error('Unauthorized'), 'Unauthorized', 401)
-    }
+    const params = await context.params
 
     await connectDB()
-    const User = await import('@/lib/models/User').then(m => m.default)
-    const user = await User.findOne({ email: session.user.email })
-    
-    if (!user) {
-      return errorResponse(new Error('User not found'), 'User not found', 404)
-    }
-
-    const expense = await Expense.findOne({
-      _id: params.id,
-      userId: user._id,
-    }).lean()
+    const shareLinkId = new URL(req.url).searchParams.get('shareLinkId') || undefined
+    const { expense } = await resolveAuthorizedExpenseAccess(params.id, shareLinkId)
 
     if (!expense) {
       return errorResponse(new Error('Expense not found'), 'Expense not found', 404)
     }
+
+    const shareLink = await ShareableLink.findOne({
+      resourceType: 'expense',
+      resourceId: expense._id.toString(),
+      isActive: true,
+    }).lean()
 
     return successResponse({
       id: expense._id.toString(),
@@ -70,6 +102,7 @@ export async function GET(
       sharedExpenseId: expense.sharedExpenseId,
       transactionGroupId: expense.transactionGroupId,
       transactionGroupName: expense.transactionGroupName,
+      shareLinkId: shareLink?.linkId,
     })
   } catch (error) {
     return errorResponse(error)
@@ -78,30 +111,18 @@ export async function GET(
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user?.email) {
-      return errorResponse(new Error('Unauthorized'), 'Unauthorized', 401)
-    }
+    const params = await context.params
 
     await connectDB()
-    const User = await import('@/lib/models/User').then(m => m.default)
-    const user = await User.findOne({ email: session.user.email })
-    
-    if (!user) {
-      return errorResponse(new Error('User not found'), 'User not found', 404)
-    }
 
     const body = await req.json()
+    const shareLinkId = typeof body.shareLinkId === 'string' ? body.shareLinkId : undefined
     const cascadeGroup = body.cascadeGroup === true
     const validatedData = updateExpenseSchema.parse(body)
-    const existingExpense = await Expense.findOne({
-      _id: params.id,
-      userId: user._id,
-    })
+    const { expense: existingExpense, user } = await resolveAuthorizedExpenseAccess(params.id, shareLinkId)
 
     if (!existingExpense) {
       return errorResponse(new Error('Expense not found'), 'Expense not found', 404)
@@ -126,21 +147,24 @@ export async function PUT(
       await Expense.updateOne(
         {
           _id: params.id,
-          userId: user._id,
+          ...(user ? { userId: user._id } : {}),
         },
         updateDoc,
         { runValidators: true }
       )
     }
 
-    const expense = await Expense.findOne({
-      _id: params.id,
-      userId: user._id,
-    })
+    const expense = await Expense.findById(params.id)
 
     if (!expense) {
       return errorResponse(new Error('Expense not found'), 'Expense not found', 404)
     }
+
+    const shareLink = await ShareableLink.findOne({
+      resourceType: 'expense',
+      resourceId: expense._id.toString(),
+      isActive: true,
+    }).lean()
 
     return successResponse({
       id: expense._id.toString(),
@@ -155,6 +179,7 @@ export async function PUT(
       sharedExpenseId: expense.sharedExpenseId,
       transactionGroupId: expense.transactionGroupId,
       transactionGroupName: expense.transactionGroupName,
+      shareLinkId: shareLink?.linkId,
     })
   } catch (error) {
     if (error instanceof Error && error.name === 'ZodError') {
@@ -166,31 +191,19 @@ export async function PUT(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user?.email) {
-      return errorResponse(new Error('Unauthorized'), 'Unauthorized', 401)
-    }
+    const params = await context.params
 
     await connectDB()
-    const User = await import('@/lib/models/User').then(m => m.default)
-    const user = await User.findOne({ email: session.user.email })
-    
-    if (!user) {
-      return errorResponse(new Error('User not found'), 'User not found', 404)
-    }
 
     const rawBody = await req.text()
     const body = rawBody ? JSON.parse(rawBody) : {}
+    const shareLinkId = typeof body?.shareLinkId === 'string' ? body.shareLinkId : undefined
     const cascadeGroup = body?.cascadeGroup === true
 
-    const expense = await Expense.findOne({
-      _id: params.id,
-      userId: user._id,
-    })
+    const { expense, user } = await resolveAuthorizedExpenseAccess(params.id, shareLinkId)
 
     if (!expense) {
       return errorResponse(new Error('Expense not found'), 'Expense not found', 404)
@@ -217,18 +230,13 @@ export async function DELETE(
     } else {
       await Expense.deleteOne({
         _id: params.id,
-        userId: user._id,
+        ...(user ? { userId: user._id } : {}),
       })
 
-      try {
-        const ShareableLink = await import('@/lib/models/ShareableLink').then(m => m.default)
-        await ShareableLink.deleteMany({
-          resourceType: 'expense',
-          resourceId: expense._id.toString(),
-        })
-      } catch {
-        // Don't fail delete if shareable link cleanup fails
-      }
+      await ShareableLink.deleteMany({
+        resourceType: 'expense',
+        resourceId: expense._id.toString(),
+      })
     }
 
     return successResponse({ message: 'Expense deleted successfully' })

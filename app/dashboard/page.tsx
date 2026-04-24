@@ -8,7 +8,7 @@ import Link from 'next/link'
 import { CATEGORIES, getCategoryIcon } from '@/lib/utils/categories'
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import type { Expense, Friend, TransactionGroup } from '@/lib/types'
-import { getExpenses, createExpense, updateMe, updatePassword, deleteAccount } from '@/lib/api'
+import { getExpenses } from '@/lib/api'
 import { calculateSettlements, getExpenseTotals } from '@/lib/utils/settlements'
 import { getExpenseParticipantCount, getExpenseShare } from '@/lib/utils/expense-shares'
 import { useTheme } from '@/components/providers/theme-provider'
@@ -16,8 +16,38 @@ import { useExpenses } from '@/hooks/useExpenses'
 import { useFriends } from '@/hooks/useFriends'
 import { useFriendRequests } from '@/hooks/useFriendRequests'
 import { useUserPassword } from '@/hooks/useUserPassword'
+import { useDashboardState } from '@/hooks/useDashboardState'
 import { ErrorBanner } from '@/components/dashboard/ErrorBanner'
 import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter'
+import { ExpenseDetailModal } from '@/components/dashboard/ExpenseDetailModal'
+import { QuickAddExpenseModal } from '@/components/dashboard/QuickAddExpenseModal'
+import { Spinner } from '@/components/ui/spinner'
+import {
+  buildCategoryData,
+  buildMonthlyData,
+  buildTrajectoryData,
+  buildTrajectoryMonthTicks,
+  calculateGroupBreakdown,
+  DASHBOARD_CHART_COLORS,
+  groupExpenses,
+} from '@/lib/utils/dashboard-data'
+
+function DashboardListSkeleton({ invert = false, rows = 4 }: { invert?: boolean; rows?: number }) {
+  const shimmerClass = invert ? 'bg-background/10' : 'bg-foreground/10'
+  const borderClass = invert ? 'border-background/20' : 'border-foreground/20'
+
+  return (
+    <div className="space-y-4">
+      {Array.from({ length: rows }).map((_, index) => (
+        <div key={index} className={`border-b ${borderClass} pb-4`}>
+          <div className={`h-6 w-40 rounded-full ${shimmerClass} animate-pulse mb-2`} />
+          <div className={`h-4 w-56 rounded-full ${shimmerClass} animate-pulse mb-3`} />
+          <div className={`h-8 w-24 rounded-full ${shimmerClass} animate-pulse`} />
+        </div>
+      ))}
+    </div>
+  )
+}
 
 export default function Dashboard() {
   const router = useRouter()
@@ -25,56 +55,85 @@ export default function Dashboard() {
   const { darkMode } = useTheme()
   const authenticated = status === 'authenticated'
 
-  const [dateRange, setDateRange] = useState<'thisMonth' | 'lastMonth' | 'thisYear' | 'all' | 'custom'>('thisMonth')
-  const [customStartDate, setCustomStartDate] = useState('')
-  const [customEndDate, setCustomEndDate] = useState('')
-  const [showCustomDateRange, setShowCustomDateRange] = useState(false)
   const [expandedExpense, setExpandedExpense] = useState<string | null>(null)
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null)
-  const [showHistory, setShowHistory] = useState(false)
-  const [showDeleteAccount, setShowDeleteAccount] = useState(false)
-  const [deleteConfirm, setDeleteConfirm] = useState('')
-  const [isDeleting, setIsDeleting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [showChangePassword, setShowChangePassword] = useState(false)
-  const [currentPassword, setCurrentPassword] = useState('')
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmNewPassword, setConfirmNewPassword] = useState('')
-  const [isChangingPassword, setIsChangingPassword] = useState(false)
-  const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null)
-  const [friendExpenses, setFriendExpenses] = useState<Expense[]>([])
-  const [isLoadingFriendExpenses, setIsLoadingFriendExpenses] = useState(false)
-  const [showAddFriendModal, setShowAddFriendModal] = useState(false)
-  const [friendEmail, setFriendEmail] = useState('')
-  const [showChangeName, setShowChangeName] = useState(false)
-  const [newName, setNewName] = useState('')
-  const [isChangingName, setIsChangingName] = useState(false)
-  const [displayName, setDisplayName] = useState<string | null>(null)
-  const [detailModal, setDetailModal] = useState<Expense[] | null>(null)
-  const [showAddExpense, setShowAddExpense] = useState(false)
-  const [newExpenseName, setNewExpenseName] = useState('')
-  const [newExpenseAmount, setNewExpenseAmount] = useState('')
-  const [newExpenseDate, setNewExpenseDate] = useState(new Date().toISOString().split('T')[0])
-  const [newExpenseCategory, setNewExpenseCategory] = useState('')
-  const [categorySuggestionsOpen, setCategorySuggestionsOpen] = useState(false)
-  const [isAddingExpense, setIsAddingExpense] = useState(false)
 
-  const { expenses, isLoading, fetchExpenses } = useExpenses(
+  const {
     dateRange,
     customStartDate,
     customEndDate,
-    authenticated
-  )
+    showCustomDateRange,
+    showHistory,
+    showDeleteAccount,
+    deleteConfirm,
+    isDeleting,
+    error,
+    showChangePassword,
+    currentPassword,
+    newPassword,
+    confirmNewPassword,
+    isChangingPassword,
+    selectedFriendId,
+    friendExpenses,
+    isLoadingFriendExpenses,
+    showAddFriendModal,
+    friendEmail,
+    showChangeName,
+    newName,
+    isChangingName,
+    displayName,
+    detailModal,
+    showAddExpense,
+    newExpenseName,
+    newExpenseAmount,
+    newExpenseDate,
+    newExpenseCategory,
+    categorySuggestionsOpen,
+    isAddingExpense,
+    setDateRange,
+    setCustomStartDate,
+    setCustomEndDate,
+    setShowCustomDateRange,
+    setShowHistory,
+    setShowDeleteAccount,
+    setDeleteConfirm,
+    setError,
+    setShowChangePassword,
+    setCurrentPassword,
+    setNewPassword,
+    setConfirmNewPassword,
+    setSelectedFriendId,
+    setFriendExpenses,
+    setIsLoadingFriendExpenses,
+    setShowAddFriendModal,
+    setFriendEmail,
+    setShowChangeName,
+    setNewName,
+    setDetailModal,
+    setShowAddExpense,
+    setNewExpenseName,
+    setNewExpenseAmount,
+    setNewExpenseDate,
+    setNewExpenseCategory,
+    setCategorySuggestionsOpen,
+    handleChangeName,
+    handleChangePassword,
+    handleDeleteAccount,
+    handleAddExpense,
+  } = useDashboardState({
+    authenticated,
+    status,
+    sessionName: session?.user?.name,
+    router,
+    updateSession,
+    session,
+    fetchExpenses: async () => {},
+  })
+
+  const { expenses, isLoading, fetchExpenses } = useExpenses(dateRange, customStartDate, customEndDate, authenticated)
   const { friends, isAddingFriend, fetchFriends, handleAddFriend, handleUnfriend } = useFriends(authenticated)
   const { friendRequests, fetchFriendRequests, handleAccept } = useFriendRequests(authenticated)
   const { hasPassword } = useUserPassword(authenticated)
-  useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/auth/signin')
-    } else if (authenticated && session?.user?.name) {
-      setDisplayName(session.user.name)
-    }
-  }, [status, session, router, authenticated])
 
   const handleAcceptFriendRequest = async (requestId: string) => {
     const result = await handleAccept(requestId)
@@ -88,7 +147,7 @@ export default function Dashboard() {
     try {
       const data = await getExpenses({ dateRange: 'all' })
       const withFriend = data.filter(
-        (e) => e.paidBy === friendName || e.splitWith.includes(friendName)
+        (expense) => expense.paidBy === friendName || expense.splitWith.includes(friendName)
       )
       setFriendExpenses(
         withFriend
@@ -101,175 +160,6 @@ export default function Dashboard() {
       setIsLoadingFriendExpenses(false)
     }
   }
-
-  const handleChangeName = async () => {
-    if (!newName.trim()) {
-      setError('Name cannot be empty')
-      return
-    }
-    if (newName.trim() === session?.user?.name) {
-      setShowChangeName(false)
-      setNewName('')
-      return
-    }
-    try {
-      setIsChangingName(true)
-      setError(null)
-      const updatedUser = await updateMe({ name: newName.trim() })
-      setDisplayName(updatedUser.name)
-      setShowChangeName(false)
-      setNewName('')
-      setError(null)
-      if (updateSession) {
-        await updateSession({
-          ...session,
-          user: {
-            ...session?.user,
-            name: updatedUser.name,
-          },
-        })
-      }
-      router.refresh()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to change name')
-    } finally {
-      setIsChangingName(false)
-    }
-  }
-
-  const handleChangePassword = async () => {
-    if (newPassword !== confirmNewPassword) {
-      setError('New passwords do not match')
-      return
-    }
-    if (newPassword.length < 8) {
-      setError('Password must be at least 8 characters')
-      return
-    }
-    try {
-      setIsChangingPassword(true)
-      setError(null)
-      await updatePassword({ currentPassword, newPassword })
-      setShowChangePassword(false)
-      setCurrentPassword('')
-      setNewPassword('')
-      setConfirmNewPassword('')
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to change password')
-    } finally {
-      setIsChangingPassword(false)
-    }
-  }
-
-  // Group expenses by transactionGroupId
-  const groupExpenses = (expenses: Expense[]): (Expense | TransactionGroup)[] => {
-    const groups = new Map<string, Expense[]>()
-    const ungrouped: Expense[] = []
-
-    expenses.forEach(expense => {
-      if (expense.transactionGroupId) {
-        if (!groups.has(expense.transactionGroupId)) {
-          groups.set(expense.transactionGroupId, [])
-        }
-        groups.get(expense.transactionGroupId)!.push(expense)
-      } else {
-        ungrouped.push(expense)
-      }
-    })
-
-    const transactionGroups: TransactionGroup[] = Array.from(groups.entries()).map(([id, groupExpenses]) => {
-      const allParticipants = new Set<string>()
-      groupExpenses.forEach(e => {
-        allParticipants.add(e.paidBy)
-        e.splitWith.forEach(p => allParticipants.add(p))
-      })
-
-      return {
-        id,
-        name: groupExpenses[0].transactionGroupName || `${groupExpenses.length} shared ${groupExpenses.length === 1 ? 'purchase' : 'purchases'}`,
-        expenses: groupExpenses.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-        totalAmount: groupExpenses.reduce((sum, e) => sum + getExpenseShare(e), 0),
-        date: groupExpenses[0].date,
-        participants: Array.from(allParticipants),
-      }
-    })
-
-    return [...transactionGroups, ...ungrouped].sort((a, b) => {
-      const dateA = 'expenses' in a ? a.expenses[0].date : a.date
-      const dateB = 'expenses' in b ? b.expenses[0].date : b.date
-      return new Date(dateB).getTime() - new Date(dateA).getTime()
-    })
-  }
-
-  const personalExpenses = expenses
-  const recentExpenses = personalExpenses.slice(0, 5)
-  const totalSpent = personalExpenses
-    .filter(e => e.type === 'expense')
-    .reduce((sum, e) => sum + getExpenseShare(e), 0)
-
-  const allExpenses = groupExpenses(personalExpenses)
-
-  // Calculate spending by category
-  const spendingByCategory = personalExpenses
-    .filter(e => e.type === 'expense' && e.category)
-    .reduce((acc, e) => {
-      const cat = e.category || 'uncategorized'
-      acc[cat] = (acc[cat] || 0) + getExpenseShare(e)
-      return acc
-    }, {} as Record<string, number>)
-
-  const categoryData = Object.entries(spendingByCategory)
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value)
-
-  // Calculate spending trajectory (by day)
-  const spendingByDate = personalExpenses
-    .filter(e => e.type === 'expense')
-    .reduce((acc, e) => {
-      const date = e.date
-      acc[date] = (acc[date] || 0) + getExpenseShare(e)
-      return acc
-    }, {} as Record<string, number>)
-
-  const trajectoryData = Object.entries(spendingByDate)
-    .map(([dateStr, amount]) => ({ date: new Date(dateStr).getTime(), dateStr, amount }))
-    .sort((a, b) => a.date - b.date)
-    .slice(-365)
-
-  const trajectoryMonthTicks = (() => {
-    if (!trajectoryData.length) return []
-    const ticks: number[] = []
-    const start = new Date(trajectoryData[0].date)
-    const end = new Date(trajectoryData[trajectoryData.length - 1].date)
-    const cur = new Date(start.getFullYear(), start.getMonth(), 1)
-    while (cur <= end) {
-      ticks.push(cur.getTime())
-      cur.setMonth(cur.getMonth() + 1)
-    }
-    return ticks
-  })()
-
-  // Calculate monthly spending
-  const monthlySpending = personalExpenses
-    .filter(e => e.type === 'expense')
-    .reduce((acc, e) => {
-      const d = new Date(e.date)
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-      acc[key] = (acc[key] || 0) + getExpenseShare(e)
-      return acc
-    }, {} as Record<string, number>)
-
-  const monthlyData = Object.entries(monthlySpending)
-    .map(([key, amount]) => ({
-      month: new Date(key + '-02').toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
-      amount,
-      key,
-    }))
-    .sort((a, b) => a.key.localeCompare(b.key))
-    .slice(-12)
-
-  const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00ff00', '#0088fe', '#ff00ff', '#ff0000', '#00ffff', '#ffff00']
 
   const onAddFriend = async () => {
     if (!friendEmail.trim()) return
@@ -289,6 +179,18 @@ export default function Dashboard() {
     if (!result.ok) setError(result.error ?? 'Failed to remove friend')
   }
 
+  const personalExpenses = expenses
+  const recentExpenses = personalExpenses.slice(0, 5)
+  const totalSpent = personalExpenses
+    .filter(e => e.type === 'expense')
+    .reduce((sum, e) => sum + getExpenseShare(e), 0)
+
+  const allExpenses = groupExpenses(personalExpenses)
+  const categoryData = buildCategoryData(personalExpenses)
+  const trajectoryData = buildTrajectoryData(personalExpenses)
+  const trajectoryMonthTicks = buildTrajectoryMonthTicks(trajectoryData)
+  const monthlyData = buildMonthlyData(personalExpenses)
+
   const toggleExpense = (expenseId: string) => {
     setExpandedExpense(expandedExpense === expenseId ? null : expenseId)
   }
@@ -296,75 +198,6 @@ export default function Dashboard() {
   const toggleGroup = (groupId: string) => {
     setExpandedGroup(expandedGroup === groupId ? null : groupId)
   }
-
-
-  const handleDeleteAccount = async () => {
-    if (deleteConfirm.toLowerCase() !== 'delete') {
-      setError('please type "delete" to confirm')
-      return
-    }
-    setIsDeleting(true)
-    setError(null)
-    try {
-      await deleteAccount()
-      await signOut({ callbackUrl: '/auth/signin' })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete account')
-      setIsDeleting(false)
-    }
-  }
-
-  const handleAddExpense = async () => {
-    if (!newExpenseName.trim() || !newExpenseAmount) return
-    setIsAddingExpense(true)
-    setError(null)
-    try {
-      await createExpense({
-        name: newExpenseName.trim(),
-        amount: parseFloat(newExpenseAmount),
-        date: newExpenseDate,
-        paidBy: displayName || session?.user?.name || 'me',
-        splitWith: [],
-        category: newExpenseCategory || undefined,
-      })
-      setNewExpenseName('')
-      setNewExpenseAmount('')
-      setNewExpenseDate(new Date().toISOString().split('T')[0])
-      setNewExpenseCategory('')
-      setShowAddExpense(false)
-      await fetchExpenses()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add expense')
-    } finally {
-      setIsAddingExpense(false)
-    }
-  }
-
-  const calculateGroupBreakdown = (group: TransactionGroup) => {
-    const balances: Record<string, { paid: number; owes: number; share: number }> = {}
-
-    group.participants.forEach(p => {
-      balances[p] = { paid: 0, owes: 0, share: 0 }
-    })
-
-    group.expenses.forEach(expense => {
-      const perPersonShare = expense.amount / expense.splitWith.length
-
-      // Track who paid
-      balances[expense.paidBy].paid += expense.amount
-
-      // Track who owes
-      expense.splitWith.forEach(person => {
-        balances[person].share += perPersonShare
-        if (person !== expense.paidBy) {
-          balances[person].owes += perPersonShare
-        }
-      })
-    })
-
-    return balances
-  }
-
   return (
     <div className="min-h-dvh bg-background">
       {/* Floating Add Expense Button */}
@@ -422,7 +255,7 @@ export default function Dashboard() {
                         dataKey="value"
                       >
                         {categoryData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          <Cell key={`cell-${index}`} fill={DASHBOARD_CHART_COLORS[index % DASHBOARD_CHART_COLORS.length]} />
                         ))}
                       </Pie>
                       <Tooltip
@@ -471,13 +304,19 @@ export default function Dashboard() {
                         stroke="#8884d8"
                         strokeWidth={2}
                         dot={{ fill: '#8884d8', r: 4, cursor: 'pointer' }}
-                        activeDot={{
-                          r: 6, cursor: 'pointer',
-                          onClick: (_: unknown, payload: { payload: { dateStr: string } }) => {
-                            const hits = personalExpenses.filter(e => e.date === payload.payload.dateStr)
-                            if (hits.length) setDetailModal(hits)
-                          }
-                        }}
+                        activeDot={(props: any) => (
+                          <circle
+                            cx={props.cx}
+                            cy={props.cy}
+                            r={6}
+                            fill="#8884d8"
+                            cursor="pointer"
+                            onClick={() => {
+                              const hits = personalExpenses.filter(e => e.date === props.payload?.dateStr)
+                              if (hits.length) setDetailModal(hits)
+                            }}
+                          />
+                        )}
                       />
                     </LineChart>
                   </ResponsiveContainer>
@@ -532,7 +371,7 @@ export default function Dashboard() {
 
           <div className="space-y-4">
             {isLoading ? (
-              <p className="text-foreground/50 text-sm">loading...</p>
+              <DashboardListSkeleton />
             ) : allExpenses.length === 0 ? (
               <p className="text-foreground/50 text-sm">no expenses in this period</p>
             ) : (
@@ -698,9 +537,9 @@ export default function Dashboard() {
                       <button
                         onClick={handleChangeName}
                         disabled={isChangingName}
-                        className="flex-1 border-2 border-foreground py-3 text-base font-medium text-foreground transition-colors hover:bg-foreground hover:text-foreground disabled:opacity-50"
+                        className="flex-1 border-2 border-foreground py-3 text-base font-medium text-foreground transition-colors hover:bg-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center"
                       >
-                        {isChangingName ? 'changing...' : 'change name'}
+                        {isChangingName ? <Spinner /> : 'change name'}
                       </button>
                     </div>
                   </div>
@@ -762,9 +601,9 @@ export default function Dashboard() {
                         <button
                           onClick={handleChangePassword}
                           disabled={isChangingPassword}
-                          className="flex-1 border-2 border-foreground py-3 text-base font-medium text-foreground transition-colors hover:bg-foreground hover:text-foreground disabled:opacity-50"
+                          className="flex-1 border-2 border-foreground py-3 text-base font-medium text-foreground transition-colors hover:bg-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center"
                         >
-                          {isChangingPassword ? 'changing...' : 'change password'}
+                          {isChangingPassword ? <Spinner /> : 'change password'}
                         </button>
                       </div>
                     </div>
@@ -808,9 +647,9 @@ export default function Dashboard() {
                       <button
                         onClick={handleDeleteAccount}
                         disabled={isDeleting}
-                        className="flex-1 border-2 border-red-500/50 py-3 text-base font-medium text-red-500 transition-colors hover:bg-red-500 hover:text-foreground disabled:opacity-50"
+                        className="flex-1 border-2 border-red-500/50 py-3 text-base font-medium text-red-500 transition-colors hover:bg-red-500 hover:text-foreground disabled:opacity-50 flex items-center justify-center"
                       >
-                        {isDeleting ? 'deleting...' : 'delete account'}
+                        {isDeleting ? <Spinner /> : 'delete account'}
                       </button>
                     </div>
                   </div>
@@ -849,9 +688,9 @@ export default function Dashboard() {
                   <button
                     onClick={onAddFriend}
                     disabled={isAddingFriend}
-                    className="flex-1 border-2 border-foreground py-3 text-base font-medium text-foreground transition-colors hover:bg-foreground hover:text-foreground disabled:opacity-50"
+                    className="flex-1 border-2 border-foreground py-3 text-base font-medium text-foreground transition-colors hover:bg-foreground hover:text-foreground disabled:opacity-50 flex items-center justify-center"
                   >
-                    {isAddingFriend ? 'adding...' : 'add'}
+                    {isAddingFriend ? <Spinner /> : 'add'}
                   </button>
                 </div>
               </div>
@@ -884,7 +723,7 @@ export default function Dashboard() {
               <h3 className="text-lg font-bold text-foreground mb-4">recent purchases</h3>
 
               {isLoadingFriendExpenses ? (
-                <p className="text-foreground/50 text-sm">loading...</p>
+                <DashboardListSkeleton rows={3} />
               ) : friendExpenses.length === 0 ? (
                 <p className="text-foreground/50 text-sm">no purchases yet</p>
               ) : (
@@ -911,216 +750,28 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Expense Detail Modal */}
-      {detailModal && (() => {
-        const participantSet = new Set<string>()
-        detailModal.forEach(e => {
-          participantSet.add(e.paidBy)
-          e.splitWith.forEach(p => participantSet.add(p))
-        })
-        const people = Array.from(participantSet).map(name => ({ id: name, name }))
-        const normalised = detailModal.map(e => ({
-          id: e.id, name: e.name, amount: e.amount, paidBy: e.paidBy,
-          splitWith: e.splitWith.includes(e.paidBy) ? e.splitWith : [e.paidBy, ...e.splitWith],
-          splitType: 'equal' as const, splitData: {} as Record<string, number>,
-        }))
-        const totals = getExpenseTotals(people, normalised)
-        const settlements = calculateSettlements(people, normalised)
-        const firstExpense = detailModal[0]
-        const editHref = firstExpense?.transactionGroupId
-          ? `/calculator?transactionGroupId=${encodeURIComponent(firstExpense.transactionGroupId)}`
-          : firstExpense
-            ? `/calculator?expenseId=${encodeURIComponent(firstExpense.id)}`
-            : '/calculator'
+      <ExpenseDetailModal detailModal={detailModal} onClose={() => setDetailModal(null)} />
 
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/50" onClick={() => setDetailModal(null)} />
-            <div className="relative bg-background text-foreground w-full max-w-md p-8 shadow-xl max-h-[85vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-8">
-                <h2 className="text-2xl font-bold">expenses</h2>
-                <div className="flex items-center gap-4">
-                  <Link href={editHref} className="text-sm font-medium text-foreground/70 hover:text-foreground transition">
-                    edit in calculator
-                  </Link>
-                  <button onClick={() => setDetailModal(null)} className="text-foreground/50 hover:text-foreground transition">
-                    <X className="h-5 w-5" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Expenses list */}
-              <div className="space-y-4 mb-10">
-                {firstExpense?.transactionGroupName && (
-                  <div className="border-b border-foreground/10 pb-4">
-                    <p className="text-xs font-bold uppercase tracking-[0.2em] text-foreground/50 mb-2">transaction</p>
-                    <p className="text-xl font-bold">{firstExpense.transactionGroupName}</p>
-                  </div>
-                )}
-                {detailModal.map(expense => {
-                  const CatIcon = expense.category ? getCategoryIcon(expense.category) : null
-                  const totalPeople = getExpenseParticipantCount(expense)
-                  return (
-                    <div key={expense.id} className="flex items-start justify-between border-b border-foreground/10 pb-4">
-                      <div>
-                        <p className="text-lg font-bold">{expense.name}</p>
-                        <p className="text-sm text-foreground/50 mt-1 flex items-center gap-1 flex-wrap">
-                          <span>{expense.paidBy} paid · {totalPeople} {totalPeople === 1 ? 'person' : 'people'}</span>
-                          {expense.category && (
-                            <span className="flex items-center gap-1">· {CatIcon && <CatIcon className="h-3 w-3" />}{expense.category}</span>
-                          )}
-                        </p>
-                      </div>
-                      <p className="text-lg font-bold shrink-0 ml-4">₱{getExpenseShare(expense).toFixed(2)}</p>
-                    </div>
-                  )
-                })}
-              </div>
-
-              {/* Summary */}
-              {people.length > 1 && (
-                <>
-                  <h3 className="text-lg font-bold mb-4">summary</h3>
-                  <div className="space-y-4 mb-10">
-                    {people.map(({ id, name }) => {
-                      const t = totals[id]
-                      return (
-                        <div key={id} className="border-b border-foreground/10 pb-4">
-                          <p className="font-bold mb-1">{name}</p>
-                          <div className="text-sm text-foreground/60 space-y-0.5">
-                            <p>paid: ₱{t.paid.toFixed(2)} · owes: ₱{t.owes.toFixed(2)} · balance: <span className={t.balance >= 0 ? 'text-green-400' : 'text-red-400'}>₱{t.balance.toFixed(2)}</span></p>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-
-                  {/* Settlements */}
-                  {settlements.length > 0 && (
-                    <>
-                      <h3 className="text-lg font-bold mb-4">settlements</h3>
-                      <div className="space-y-3">
-                        {settlements.map((s, i) => (
-                          <div key={i} className="flex items-center justify-between border-b border-foreground/10 pb-3">
-                            <p className="text-sm text-foreground/70">{s.from} pays {s.to}</p>
-                            <p className="font-bold">₱{s.amount.toFixed(2)}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        )
-      })()}
-
-      {/* Add Expense Modal */}
-
-      {showAddExpense && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setShowAddExpense(false)}>
-          <div className="w-full max-w-lg border border-foreground/20 bg-secondary p-8" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-8">
-              <h2 className="text-2xl font-bold text-foreground">add expense</h2>
-              <button onClick={() => setShowAddExpense(false)} className="text-foreground/50 hover:text-foreground transition">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="space-y-6">
-              <div>
-                <label className="text-sm font-medium text-foreground/50 block mb-2">name</label>
-                <input
-                  autoFocus
-                  type="text"
-                  value={newExpenseName}
-                  onChange={e => setNewExpenseName(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleAddExpense()}
-                  placeholder="e.g. Groceries"
-                  className="w-full border-b-2 border-foreground/30 bg-transparent pb-3 text-lg text-foreground placeholder:text-foreground/40 focus:border-foreground focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-foreground/50 block mb-2">amount</label>
-                <input
-                  type="number"
-                  value={newExpenseAmount}
-                  onChange={e => setNewExpenseAmount(e.target.value)}
-                  placeholder="0.00"
-                  step="0.01"
-                  className="w-full border-b-2 border-foreground/30 bg-transparent pb-3 text-lg text-foreground placeholder:text-foreground/40 focus:border-foreground focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-foreground/50 block mb-2">date</label>
-                <input
-                  type="date"
-                  value={newExpenseDate}
-                  onChange={e => setNewExpenseDate(e.target.value)}
-                  className="w-full border-b-2 border-foreground/30 bg-transparent pb-3 text-lg text-foreground focus:border-foreground focus:outline-none"
-                />
-              </div>
-              <div className="relative">
-                <label className="text-sm font-medium text-foreground/50 block mb-2">category</label>
-                <button
-                  type="button"
-                  onClick={() => setCategorySuggestionsOpen(o => !o)}
-                  className="w-full border-b-2 border-foreground/30 bg-transparent pb-3 text-lg text-foreground focus:border-foreground focus:outline-none text-left flex items-center justify-between"
-                >
-                  {newExpenseCategory ? (
-                    <span className="flex items-center gap-2">
-                      {(() => { const Icon = getCategoryIcon(newExpenseCategory); return Icon ? <Icon className="h-4 w-4 opacity-60" /> : null })()}
-                      {newExpenseCategory}
-                    </span>
-                  ) : (
-                    <span className="text-foreground/40">select category</span>
-                  )}
-                  <ChevronDown className="h-3 w-3 opacity-50 shrink-0" />
-                </button>
-                {categorySuggestionsOpen && (
-                  <div className="absolute top-full left-0 right-0 bg-background text-foreground border border-foreground/20 shadow-lg z-10">
-                    {newExpenseCategory && (
-                      <button
-                        type="button"
-                        onMouseDown={e => { e.preventDefault(); setNewExpenseCategory(''); setCategorySuggestionsOpen(false) }}
-                        className="w-full text-left px-4 py-2 text-sm text-foreground/50 hover:bg-foreground/10 transition-colors border-b border-foreground/10"
-                      >
-                        clear
-                      </button>
-                    )}
-                    {CATEGORIES.map(({ value, label, Icon }) => (
-                      <button
-                        key={value}
-                        type="button"
-                        onMouseDown={e => { e.preventDefault(); setNewExpenseCategory(value); setCategorySuggestionsOpen(false) }}
-                        className="w-full text-left px-4 py-2 text-sm hover:bg-foreground/10 transition-colors flex items-center gap-3"
-                      >
-                        <Icon className="h-4 w-4 opacity-60 shrink-0" />
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="flex gap-3 mt-8">
-              <button
-                onClick={() => setShowAddExpense(false)}
-                className="flex-1 border-2 border-foreground/30 py-3 text-base font-medium text-foreground/70 transition-colors hover:border-foreground hover:text-foreground"
-              >
-                cancel
-              </button>
-              <button
-                onClick={handleAddExpense}
-                disabled={isAddingExpense || !newExpenseName.trim() || !newExpenseAmount}
-                className="flex-1 border-2 border-foreground py-3 text-base font-medium text-foreground transition-colors hover:bg-foreground hover:text-background disabled:opacity-50"
-              >
-                {isAddingExpense ? 'adding...' : 'add expense'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <QuickAddExpenseModal
+        isOpen={showAddExpense}
+        newExpenseName={newExpenseName}
+        newExpenseAmount={newExpenseAmount}
+        newExpenseDate={newExpenseDate}
+        newExpenseCategory={newExpenseCategory}
+        categorySuggestionsOpen={categorySuggestionsOpen}
+        isAddingExpense={isAddingExpense}
+        onClose={() => setShowAddExpense(false)}
+        onExpenseNameChange={setNewExpenseName}
+        onExpenseAmountChange={setNewExpenseAmount}
+        onExpenseDateChange={setNewExpenseDate}
+        onCategoryToggle={() => setCategorySuggestionsOpen((open) => !open)}
+        onCategoryChange={(value) => {
+          setNewExpenseCategory(value)
+          setCategorySuggestionsOpen(false)
+        }}
+        onSubmit={handleAddExpense}
+        categories={CATEGORIES.map(category => category.value)}
+      />
     </div>
   )
 }

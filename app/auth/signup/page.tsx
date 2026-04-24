@@ -6,6 +6,7 @@ import { signIn } from 'next-auth/react'
 import Link from 'next/link'
 import { User, Mail, Lock } from 'lucide-react'
 import { SiteHeader } from '@/components/layout/site-header'
+import { Spinner } from '@/components/ui/spinner'
 
 const inputClass = "flex-1 bg-transparent pb-3 text-lg text-foreground placeholder:text-foreground/40 focus:outline-none"
 
@@ -132,9 +133,9 @@ export default function SignUp() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full border-2 border-foreground py-3 text-base font-medium text-foreground transition-colors hover:bg-foreground hover:text-background"
+              className="w-full border-2 border-foreground py-3 text-base font-medium text-foreground transition-colors hover:bg-foreground hover:text-background disabled:opacity-60 flex items-center justify-center"
             >
-              {isLoading ? 'creating account...' : 'sign up'}
+              {isLoading ? <Spinner /> : 'sign up'}
             </button>
           </form>
 

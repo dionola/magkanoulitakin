@@ -1,7 +1,8 @@
 import mongoose, { Schema, Model } from 'mongoose'
 
 export interface IShareableLink extends mongoose.Document {
-  userId: mongoose.Types.ObjectId
+  _id: mongoose.Types.ObjectId
+  userId?: mongoose.Types.ObjectId
   linkId: string // Unique identifier for the link
   resourceType: 'expense'
   resourceId: string // ID of the expense or recurring expense
@@ -18,7 +19,6 @@ const ShareableLinkSchema = new Schema<IShareableLink>(
     userId: {
       type: Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
       index: true,
     },
     linkId: {
@@ -57,7 +57,6 @@ const ShareableLinkSchema = new Schema<IShareableLink>(
   }
 )
 
-ShareableLinkSchema.index({ linkId: 1 })
 ShareableLinkSchema.index({ userId: 1, resourceType: 1, resourceId: 1 })
 
 const ShareableLink: Model<IShareableLink> = mongoose.models.ShareableLink || mongoose.model<IShareableLink>('ShareableLink', ShareableLinkSchema)
