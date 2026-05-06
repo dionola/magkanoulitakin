@@ -62,12 +62,17 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         if (account?.provider === 'google') {
           await connectDB()
-          const dbUser = await User.findOne({ email: user.email })
+          const dbUser = user.email ? await User.findOne({ email: user.email.toLowerCase() }) : null
           if (dbUser) {
             token.id = dbUser._id.toString()
             token.email = dbUser.email
             token.name = dbUser.name
             token.picture = dbUser.image
+          } else {
+            token.id = user.id
+            token.email = user.email
+            token.name = user.name
+            token.picture = user.image
           }
         } else if (account?.provider === 'credentials') {
           token.id = user.id
@@ -111,18 +116,17 @@ export const authOptions: NextAuthOptions = {
           await connectDB()
           if (!user.email) return false
           const existingUser = await User.findOne({ email: user.email.toLowerCase() })
-          if (existingUser) {
-            await User.updateOne(
-              { email: user.email.toLowerCase() },
-              {
-                $set: {
-                  name: user.name || existingUser.name,
-                  image: user.image || existingUser.image,
-                  emailVerified: existingUser.emailVerified || new Date(),
-                },
-              }
-            )
-          }
+          await User.updateOne(
+            { email: user.email.toLowerCase() },
+            {
+              $set: {
+                name: user.name || existingUser?.name || 'User',
+                image: user.image || existingUser?.image,
+                emailVerified: existingUser?.emailVerified || new Date(),
+              },
+            },
+            { upsert: true }
+          )
           return true
         } catch {
           return false
