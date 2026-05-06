@@ -11,10 +11,23 @@ const geist = Geist({ subsets: ['latin'], variable: '--font-geist-sans' })
 const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono' })
 
 export const metadata: Metadata = {
-  title: 'magkanoUlitAkin',
-  description: 'Elegant group expense splitting and budget management',
-  icons: {
-    icon: '/peso.png',
+  title: "Magkano Ulitakin",
+  description: "Split group expenses without the awkward math.",
+  metadataBase: new URL("https://magkanoulitakin.com"),
+  openGraph: {
+    title: "Magkano Ulitakin",
+    description: "Split group expenses without the awkward math.",
+    url: "https://magkanoulitakin.com",
+    siteName: "Magkano Ulitakin",
+    images: [{ url: "https://ejyic7eskr7jje45.public.blob.vercel-storage.com/magkanoulitakin-thumbnail.png", width:
+1200, height: 630 }],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Magkano Ulitakin",
+    description: "Split group expenses without the awkward math.",
+    images: ["https://ejyic7eskr7jje45.public.blob.vercel-storage.com/magkanoulitakin-thumbnail.png"],
   },
 }
 
