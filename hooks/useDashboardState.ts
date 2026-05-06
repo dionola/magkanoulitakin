@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { signOut } from 'next-auth/react'
+import { useQueryClient } from '@tanstack/react-query'
 import { createExpense, updateMe, updatePassword, deleteAccount } from '@/lib/api'
 import type { Expense } from '@/lib/types'
 
@@ -15,7 +16,6 @@ interface UseDashboardStateArgs {
   }
   updateSession?: (data?: unknown) => Promise<unknown>
   session?: unknown
-  fetchExpenses: () => Promise<void>
 }
 
 export function useDashboardState({
@@ -25,8 +25,8 @@ export function useDashboardState({
   router,
   updateSession,
   session,
-  fetchExpenses,
 }: UseDashboardStateArgs) {
+  const queryClient = useQueryClient()
   const [dateRange, setDateRange] = useState<'thisMonth' | 'lastMonth' | 'thisYear' | 'all' | 'custom'>('thisMonth')
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate, setCustomEndDate] = useState('')
@@ -159,7 +159,7 @@ export function useDashboardState({
       setNewExpenseDate(new Date().toISOString().split('T')[0])
       setNewExpenseCategory('')
       setShowAddExpense(false)
-      await fetchExpenses()
+      await queryClient.invalidateQueries({ queryKey: ['expenses'] })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add expense')
     } finally {

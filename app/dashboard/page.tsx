@@ -1,16 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useSession, signOut } from 'next-auth/react'
-import { ChevronDown, ChevronUp, Plus, X } from 'lucide-react'
-import Link from 'next/link'
+import { useSession } from 'next-auth/react'
+import { Plus, X } from 'lucide-react'
 import { CATEGORIES, getCategoryIcon } from '@/lib/utils/categories'
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import type { Expense, Friend, TransactionGroup } from '@/lib/types'
-import { getExpenses } from '@/lib/api'
-import { calculateSettlements, getExpenseTotals } from '@/lib/utils/settlements'
-import { getExpenseParticipantCount, getExpenseShare } from '@/lib/utils/expense-shares'
+import type { Expense, TransactionGroup } from '@/lib/types'
+import { getExpenseShare } from '@/lib/utils/expense-shares'
 import { useTheme } from '@/components/providers/theme-provider'
 import { useExpenses } from '@/hooks/useExpenses'
 import { useFriends } from '@/hooks/useFriends'
@@ -74,8 +71,6 @@ export default function Dashboard() {
     confirmNewPassword,
     isChangingPassword,
     selectedFriendId,
-    friendExpenses,
-    isLoadingFriendExpenses,
     showAddFriendModal,
     friendEmail,
     showChangeName,
@@ -103,8 +98,6 @@ export default function Dashboard() {
     setNewPassword,
     setConfirmNewPassword,
     setSelectedFriendId,
-    setFriendExpenses,
-    setIsLoadingFriendExpenses,
     setShowAddFriendModal,
     setFriendEmail,
     setShowChangeName,
@@ -127,13 +120,21 @@ export default function Dashboard() {
     router,
     updateSession,
     session,
-    fetchExpenses: async () => {},
   })
 
-  const { expenses, isLoading, fetchExpenses } = useExpenses(dateRange, customStartDate, customEndDate, authenticated)
-  const { friends, isAddingFriend, fetchFriends, handleAddFriend, handleUnfriend } = useFriends(authenticated)
-  const { friendRequests, fetchFriendRequests, handleAccept } = useFriendRequests(authenticated)
+  const { expenses, isLoading } = useExpenses(dateRange, customStartDate, customEndDate, authenticated)
+  const { friends, isAddingFriend, handleAddFriend, handleUnfriend } = useFriends(authenticated)
+  const { friendRequests, handleAccept } = useFriendRequests(authenticated)
   const { hasPassword } = useUserPassword(authenticated)
+  const selectedFriend = friends.find(friend => friend.id === selectedFriendId)
+  const { expenses: allFriendCandidateExpenses, isLoading: isLoadingFriendExpenses } = useExpenses('all', '', '', authenticated && !!selectedFriendId)
+  const friendExpenses = useMemo(() => {
+    if (!selectedFriend) return []
+    return allFriendCandidateExpenses
+      .filter((expense) => expense.paidBy === selectedFriend.name || expense.splitWith.includes(selectedFriend.name))
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 10)
+  }, [allFriendCandidateExpenses, selectedFriend])
 
   const handleAcceptFriendRequest = async (requestId: string) => {
     const result = await handleAccept(requestId)
@@ -141,24 +142,8 @@ export default function Dashboard() {
     else setError(result.error ?? 'Failed to accept friend request')
   }
 
-  const handleFriendClick = async (friendId: string, friendName: string) => {
+  const handleFriendClick = (friendId: string) => {
     setSelectedFriendId(friendId)
-    setIsLoadingFriendExpenses(true)
-    try {
-      const data = await getExpenses({ dateRange: 'all' })
-      const withFriend = data.filter(
-        (expense) => expense.paidBy === friendName || expense.splitWith.includes(friendName)
-      )
-      setFriendExpenses(
-        withFriend
-          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-          .slice(0, 10)
-      )
-    } catch {
-      setFriendExpenses([])
-    } finally {
-      setIsLoadingFriendExpenses(false)
-    }
   }
 
   const onAddFriend = async () => {
@@ -474,7 +459,7 @@ export default function Dashboard() {
                 >
                   <div className="flex-1">
                     <button
-                      onClick={() => handleFriendClick(friend.id, friend.name)}
+                      onClick={() => handleFriendClick(friend.id)}
                       className="text-lg font-bold text-foreground hover:opacity-70 transition underline decoration-background/30 hover:decoration-background text-left"
                     >
                       {friend.name}
@@ -702,7 +687,6 @@ export default function Dashboard() {
         {selectedFriendId && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => {
             setSelectedFriendId(null)
-            setFriendExpenses([])
           }}>
             <div className="w-full max-w-2xl border border-foreground/20 bg-secondary p-8 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-6">
@@ -712,7 +696,6 @@ export default function Dashboard() {
                 <button
                   onClick={() => {
                     setSelectedFriendId(null)
-                    setFriendExpenses([])
                   }}
                   className="text-foreground/40 hover:text-foreground transition-colors"
                 >

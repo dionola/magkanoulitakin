@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import Link from 'next/link'
-import { getExpenses } from '@/lib/api'
-import type { Expense } from '@/lib/types'
+import type { DateRange } from '@/lib/api'
 import { useTheme } from '@/components/providers/theme-provider'
+import { useExpenses } from '@/hooks/useExpenses'
 import { CATEGORIES, getCategoryIcon } from '@/lib/utils/categories'
 import { getExpenseShare } from '@/lib/utils/expense-shares'
 
@@ -27,13 +27,12 @@ function HistoryListSkeleton() {
 
 export default function HistoryPage() {
   const { darkMode } = useTheme()
-  const [dateRange, setDateRange] = useState<'thisMonth' | 'lastMonth' | 'thisYear' | 'all'>('all')
+  const [dateRange, setDateRange] = useState<DateRange>('all')
   const [selectedCategory, setSelectedCategory] = useState('')
   const [expandedExpense, setExpandedExpense] = useState<string | null>(null)
-  const [expenses, setExpenses] = useState<Expense[]>([])
-  const [isLoading, setIsLoading] = useState(true)
   const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false)
   const categoryRef = useRef<HTMLDivElement>(null)
+  const { expenses, isLoading } = useExpenses(dateRange, '', '', true)
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -42,22 +41,6 @@ export default function HistoryPage() {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
-
-  const fetchExpenses = useCallback(async () => {
-    try {
-      setIsLoading(true)
-      const data = await getExpenses({ dateRange })
-      setExpenses(data)
-    } catch {
-      setExpenses([])
-    } finally {
-      setIsLoading(false)
-    }
-  }, [dateRange])
-
-  useEffect(() => {
-    fetchExpenses()
-  }, [fetchExpenses])
 
   const filtered = selectedCategory
     ? expenses.filter(e => e.category === selectedCategory)

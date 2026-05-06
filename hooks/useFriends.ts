@@ -1,57 +1,53 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getFriends, addFriend, removeFriend } from '@/lib/api'
-import type { Friend } from '@/lib/types'
 
 export function useFriends(enabled: boolean) {
-  const [friends, setFriends] = useState<Friend[]>([])
-  const [isAddingFriend, setIsAddingFriend] = useState(false)
+  const queryClient = useQueryClient()
+  const friendsQuery = useQuery({
+    queryKey: ['friends'],
+    enabled,
+    queryFn: getFriends,
+  })
 
-  const fetchFriends = useCallback(async () => {
-    if (!enabled) return
-    try {
-      const data = await getFriends()
-      setFriends(data)
-    } catch {
-      setFriends([])
-    }
-  }, [enabled])
+  const addFriendMutation = useMutation({
+    mutationFn: addFriend,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['friends'] })
+    },
+  })
+  const removeFriendMutation = useMutation({
+    mutationFn: removeFriend,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['friends'] })
+      await queryClient.invalidateQueries({ queryKey: ['friendRequests'] })
+    },
+  })
 
-  useEffect(() => {
-    fetchFriends()
-  }, [fetchFriends])
-
-  const handleAddFriend = useCallback(
-    async (email: string) => {
+  return {
+    friends: friendsQuery.data ?? [],
+    isAddingFriend: addFriendMutation.isPending,
+    fetchFriends: async () => {
+      await friendsQuery.refetch()
+    },
+    handleAddFriend: async (email: string) => {
       try {
-        setIsAddingFriend(true)
-        await addFriend(email)
-        await fetchFriends()
+        await addFriendMutation.mutateAsync(email)
         return { ok: true }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to add friend'
         return { ok: false, error: message }
-      } finally {
-        setIsAddingFriend(false)
       }
     },
-    [fetchFriends]
-  )
-
-  const handleUnfriend = useCallback(
-    async (friendId: string) => {
+    handleUnfriend: async (friendId: string) => {
       try {
-        await removeFriend(friendId)
-        await fetchFriends()
+        await removeFriendMutation.mutateAsync(friendId)
         return { ok: true }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to remove friend'
         return { ok: false, error: message }
       }
     },
-    [fetchFriends]
-  )
-
-  return { friends, isAddingFriend, fetchFriends, handleAddFriend, handleUnfriend }
+  }
 }

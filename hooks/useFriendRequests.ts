@@ -1,39 +1,37 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getFriendRequests, acceptFriendRequest } from '@/lib/api'
-import type { FriendRequest } from '@/lib/types'
 
 export function useFriendRequests(enabled: boolean) {
-  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([])
+  const queryClient = useQueryClient()
+  const requestsQuery = useQuery({
+    queryKey: ['friendRequests'],
+    enabled,
+    queryFn: getFriendRequests,
+  })
 
-  const fetchFriendRequests = useCallback(async () => {
-    if (!enabled) return
-    try {
-      const data = await getFriendRequests()
-      setFriendRequests(data)
-    } catch {
-      setFriendRequests([])
-    }
-  }, [enabled])
+  const acceptMutation = useMutation({
+    mutationFn: acceptFriendRequest,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['friendRequests'] })
+      await queryClient.invalidateQueries({ queryKey: ['friends'] })
+    },
+  })
 
-  useEffect(() => {
-    fetchFriendRequests()
-  }, [fetchFriendRequests])
-
-  const handleAccept = useCallback(
-    async (requestId: string) => {
+  return {
+    friendRequests: requestsQuery.data ?? [],
+    fetchFriendRequests: async () => {
+      await requestsQuery.refetch()
+    },
+    handleAccept: async (requestId: string) => {
       try {
-        await acceptFriendRequest(requestId)
-        await fetchFriendRequests()
+        await acceptMutation.mutateAsync(requestId)
         return { ok: true }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to accept friend request'
         return { ok: false, error: message }
       }
     },
-    [fetchFriendRequests]
-  )
-
-  return { friendRequests, fetchFriendRequests, handleAccept }
+  }
 }

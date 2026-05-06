@@ -1,11 +1,14 @@
 import type { NextAuthOptions } from 'next-auth'
+import { MongoDBAdapter } from '@next-auth/mongodb-adapter'
 import GoogleProvider from 'next-auth/providers/google'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import connectDB from '@/lib/db'
+import clientPromise from '@/lib/mongodb'
 import User from '@/lib/models/User'
 import bcrypt from 'bcryptjs'
 
 export const authOptions: NextAuthOptions = {
+  adapter: MongoDBAdapter(clientPromise),
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -108,14 +111,7 @@ export const authOptions: NextAuthOptions = {
           await connectDB()
           if (!user.email) return false
           const existingUser = await User.findOne({ email: user.email.toLowerCase() })
-          if (!existingUser) {
-            await User.create({
-              email: user.email.toLowerCase(),
-              name: user.name || 'User',
-              image: user.image,
-              emailVerified: new Date(),
-            })
-          } else {
+          if (existingUser) {
             await User.updateOne(
               { email: user.email.toLowerCase() },
               {

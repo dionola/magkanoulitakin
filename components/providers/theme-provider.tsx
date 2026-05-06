@@ -1,37 +1,28 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState } from 'react'
-
-type ThemeContextType = {
-  darkMode: boolean
-  toggleDarkMode: () => void
-}
-
-const ThemeContext = createContext<ThemeContextType>({
-  darkMode: true,
-  toggleDarkMode: () => {},
-})
+import { ThemeProvider as NextThemesProvider, useTheme as useNextTheme } from 'next-themes'
+import { useEffect, useState } from 'react'
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [darkMode, setDarkMode] = useState(true)
-
-  useEffect(() => {
-    const saved = localStorage.getItem('darkMode')
-    if (saved !== null) setDarkMode(saved !== 'false')
-  }, [])
-
-  useEffect(() => {
-    localStorage.setItem('darkMode', String(darkMode))
-    document.documentElement.classList.toggle('dark', darkMode)
-  }, [darkMode])
-
   return (
-    <ThemeContext.Provider value={{ darkMode, toggleDarkMode: () => setDarkMode(p => !p) }}>
+    <NextThemesProvider attribute="class" defaultTheme="dark" enableSystem={false}>
       {children}
-    </ThemeContext.Provider>
+    </NextThemesProvider>
   )
 }
 
 export function useTheme() {
-  return useContext(ThemeContext)
+  const [mounted, setMounted] = useState(false)
+  const { resolvedTheme, setTheme } = useNextTheme()
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const darkMode = mounted ? resolvedTheme !== 'light' : true
+
+  return {
+    darkMode,
+    toggleDarkMode: () => setTheme(darkMode ? 'light' : 'dark'),
+  }
 }
