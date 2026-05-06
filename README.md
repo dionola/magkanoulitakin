@@ -1,24 +1,15 @@
-# Magkano Ulit Akin
+# Magkano Ulit Akin (How much was mine again?)
 
-Magkano Ulit Akin is for the moment after dinner, a trip, or a shared errand when everyone is trying to remember who paid, who joined, and how much each person still owes. It starts as a quick group-split calculator, then turns those one-off calculations into saved expenses, shared transactions, friend-based records, and dashboard views you can come back to later.
-
-I built it as a portfolio piece that feels like a small real product: the calculator works without ceremony, signed-in users can track their own spending, friends can share transaction groups, and guests can view shared links without needing the full account flow.
-
-## App Walkthrough
-
-Add a short demo video here that walks through the main flow: creating a split in the calculator, signing in, saving expenses, sharing a transaction with friends, and checking the dashboard.
-
-```markdown
-[![Magkano Ulit Akin app walkthrough](./public/demo-thumbnail.png)](https://your-demo-video-link.com)
-```
-
-## Tech Runthrough
-
-The app is built with the Next.js App Router, React, and TypeScript. Routes, pages, layouts, and API handlers live together in `app/`, with reusable UI, providers, and feature components split out under `components/`.
-
-Authentication runs through NextAuth, using credentials login plus Google OAuth and the MongoDB adapter for persistence. App data is stored in MongoDB with Mongoose models, while request payloads are validated with Zod before they reach the database.
-
-On the client side, TanStack Query handles cached dashboard and account data, with a small shared API wrapper keeping fetch behavior consistent. The interface uses Tailwind CSS, lucide-react icons, next-themes for theme handling, and Recharts for spending visualizations. Playwright covers the main end-to-end flows, including auth, friend requests, shared expenses, and synced transaction updates.
+[![magkanoulitakin](https://ejyic7eskr7jje45.public.blob.vercel-storage.com/magkanoulitakin-thumbnail.png)](https://magkanoulitakin.com)
+  
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat&logo=nextdotjs&logoColor=white)
+![React](https://img.shields.io/badge/React-61DAFB?style=flat&logo=react&logoColor=black)
+![NextAuth.js](https://img.shields.io/badge/NextAuth.js-000000?style=flat&logo=nextdotjs&logoColor=white)
+![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat&logo=mongodb&logoColor=white)
+![Mongoose](https://img.shields.io/badge/Mongoose-880000?style=flat&logo=mongoose&logoColor=white)
+![Zod](https://img.shields.io/badge/Zod-3E67B1?style=flat&logo=zod&logoColor=white)
+![Recharts](https://img.shields.io/badge/Recharts-22B5BF?style=flat&logo=recharts&logoColor=white)
 
 ## Tech Stack
 
