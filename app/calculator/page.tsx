@@ -275,18 +275,8 @@ function CalculatorPage() {
     lastLoadedKeyRef,
   })
 
-  const handleAddReceiptItems = (items: { name: string; amount: number }[]) => {
-    const defaultPaidBy = people[0]?.id ?? initialCalculatorPerson.id
-    const newExpenses: CalculatorExpense[] = items.map(item => ({
-      id: crypto.randomUUID(),
-      name: item.name,
-      amount: item.amount,
-      paidBy: defaultPaidBy,
-      splitWith: people.map(p => p.id),
-      splitType: 'equal',
-      splitData: {},
-    }))
-    setExpenses(prev => [...prev, ...newExpenses])
+  const handleAddReceiptItems = (newItems: Omit<CalculatorExpense, 'id'>[]) => {
+    setExpenses(prev => [...prev, ...newItems.map(item => ({ ...item, id: crypto.randomUUID() }))])
   }
 
   const expenseTotals = getExpenseTotals(people, expenses)
@@ -406,7 +396,7 @@ function CalculatorPage() {
               onCancelEdit={cancelEditExpense}
               onSubmit={() => void addExpense()}
             />
-              <ReceiptScanner currency={currency} onAddItems={handleAddReceiptItems} />
+              <ReceiptScanner currency={currency} people={people} onAddExpenses={handleAddReceiptItems} />
             </div>
           </div>
         )}
