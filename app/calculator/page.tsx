@@ -14,6 +14,7 @@ import { PeoplePanel } from '@/components/calculator/PeoplePanel'
 import { ExpenseComposer } from '@/components/calculator/ExpenseComposer'
 import { ExpenseBreakdown } from '@/components/calculator/ExpenseBreakdown'
 import { CurrencySelector } from '@/components/calculator/CurrencySelector'
+import { ReceiptScanner } from '@/components/calculator/ReceiptScanner'
 import { useCalculatorActions } from '@/hooks/useCalculatorActions'
 import {
   buildCalculatorStateFromSavedExpenses,
@@ -274,6 +275,20 @@ function CalculatorPage() {
     lastLoadedKeyRef,
   })
 
+  const handleAddReceiptItems = (items: { name: string; amount: number }[]) => {
+    const defaultPaidBy = people[0]?.id ?? initialCalculatorPerson.id
+    const newExpenses: CalculatorExpense[] = items.map(item => ({
+      id: crypto.randomUUID(),
+      name: item.name,
+      amount: item.amount,
+      paidBy: defaultPaidBy,
+      splitWith: people.map(p => p.id),
+      splitType: 'equal',
+      splitData: {},
+    }))
+    setExpenses(prev => [...prev, ...newExpenses])
+  }
+
   const expenseTotals = getExpenseTotals(people, expenses)
   const settlements = calculateSettlements(people, expenses)
   const hasPendingTransactionNameChange = !!activeTransactionGroupId &&
@@ -332,7 +347,8 @@ function CalculatorPage() {
               }}
             />
 
-            <ExpenseComposer
+            <div className="space-y-6">
+              <ExpenseComposer
               people={people}
               expensesCount={expenses.length}
               activeTransactionGroupId={activeTransactionGroupId}
@@ -390,6 +406,8 @@ function CalculatorPage() {
               onCancelEdit={cancelEditExpense}
               onSubmit={() => void addExpense()}
             />
+              <ReceiptScanner currency={currency} onAddItems={handleAddReceiptItems} />
+            </div>
           </div>
         )}
 
