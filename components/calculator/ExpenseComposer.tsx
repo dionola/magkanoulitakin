@@ -9,7 +9,6 @@ interface ExpenseComposerProps {
   people: Person[]
   expensesCount: number
   activeTransactionGroupId: string | null
-  activeShareLinkId: string | null
   transactionNameInput: string
   hasPendingTransactionNameChange: boolean
   isUpdatingTransactionName: boolean
@@ -24,7 +23,6 @@ interface ExpenseComposerProps {
   editingExpenseId: string | null
   formErrors: { name?: string; amount?: string; splitWith?: string }
   saveError: string
-  shareCopied: boolean
   isLoggedIn: boolean
   isSavingExpense: boolean
   categoryRef: React.RefObject<HTMLDivElement | null>
@@ -43,7 +41,6 @@ interface ExpenseComposerProps {
   onSplitToggle: () => void
   onToggleSplitWith: (id: string) => void
   onSelectAllSplitWith: () => void
-  onCopyShareLink: () => void
   onResetTransaction: () => void
   onCancelEdit: () => void
   onSubmit: () => void
@@ -53,7 +50,6 @@ export function ExpenseComposer({
   people,
   expensesCount,
   activeTransactionGroupId,
-  activeShareLinkId,
   transactionNameInput,
   hasPendingTransactionNameChange,
   isUpdatingTransactionName,
@@ -68,7 +64,6 @@ export function ExpenseComposer({
   editingExpenseId,
   formErrors,
   saveError,
-  shareCopied,
   isLoggedIn,
   isSavingExpense,
   categoryRef,
@@ -87,7 +82,6 @@ export function ExpenseComposer({
   onSplitToggle,
   onToggleSplitWith,
   onSelectAllSplitWith,
-  onCopyShareLink,
   onResetTransaction,
   onCancelEdit,
   onSubmit,
@@ -256,17 +250,7 @@ export function ExpenseComposer({
         {saveError && <p className="text-xs text-red-500">{saveError}</p>}
 
         <div className="flex gap-3 mt-8">
-          {(activeTransactionGroupId || expensesCount > 0) && (
-            <button
-              type="button"
-              onClick={onCopyShareLink}
-              disabled={!activeShareLinkId}
-              className="px-5 py-4 border border-foreground/20 text-foreground font-bold text-lg rounded-lg hover:bg-foreground/5 transition disabled:opacity-40"
-            >
-              {shareCopied ? 'Copied Link' : 'Share'}
-            </button>
-          )}
-          {(isLoggedIn || activeShareLinkId) && (activeTransactionGroupId || expensesCount > 0) && (
+          {expensesCount > 0 && (
             <button
               type="button"
               onClick={onResetTransaction}
