@@ -15,6 +15,7 @@ export function SiteHeader({ children, sticky = false }: SiteHeaderProps) {
   const { darkMode, toggleDarkMode } = useTheme()
   const { data: session, status } = useSession()
   const isLoggedIn = status === 'authenticated' && !!session
+  const isAuthLoading = status === 'loading'
   const [menuOpen, setMenuOpen] = useState(false)
 
   return (
@@ -35,7 +36,7 @@ export function SiteHeader({ children, sticky = false }: SiteHeaderProps) {
             >
               {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </button>
-            {isLoggedIn ? (
+            {!isAuthLoading && (isLoggedIn ? (
               <button
                 onClick={() => signOut({ callbackUrl: '/auth/signin' })}
                 className="flex items-center gap-2 font-bold text-base hover:opacity-70 transition"
@@ -53,7 +54,7 @@ export function SiteHeader({ children, sticky = false }: SiteHeaderProps) {
                   sign up
                 </Link>
               </>
-            )}
+            ))}
           </div>
 
           {/* Mobile hamburger */}
@@ -103,7 +104,7 @@ export function SiteHeader({ children, sticky = false }: SiteHeaderProps) {
                 {darkMode ? 'light mode' : 'dark mode'}
               </button>
 
-              {isLoggedIn ? (
+              {!isAuthLoading && (isLoggedIn ? (
                 <button
                   onClick={() => signOut({ callbackUrl: '/auth/signin' })}
                   className="px-6 py-3 text-base font-bold text-foreground hover:opacity-70 transition text-left"
@@ -125,7 +126,7 @@ export function SiteHeader({ children, sticky = false }: SiteHeaderProps) {
                     sign up
                   </Link>
                 </>
-              )}
+              ))}
             </nav>
           </div>
         </div>

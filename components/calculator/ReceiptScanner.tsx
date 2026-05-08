@@ -195,10 +195,9 @@ export function ReceiptScanner({ currency, people, onAddExpenses }: ReceiptScann
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex items-center gap-2 text-sm font-bold text-muted-foreground hover:text-foreground transition"
-        title="Scan receipt"
+        className="w-full py-4 border border-foreground/20 text-foreground font-bold text-lg rounded-lg hover:bg-foreground/5 transition flex items-center justify-center gap-2"
       >
-        <ScanLine className="h-4 w-4" />
+        <ScanLine className="h-5 w-5" />
         Scan Receipt
       </button>
     )
