@@ -27,6 +27,7 @@ export function buildCalculatorStateFromSavedExpenses(
   const fallbackIds = new Map<string, string>()
 
   const getPersonId = (name: string) => {
+    if (name === initialCalculatorPerson.name && !sessionName) return initialCalculatorPerson.id
     if (sessionName && name === sessionName) return initialCalculatorPerson.id
 
     const friendId = friendByName.get(name)

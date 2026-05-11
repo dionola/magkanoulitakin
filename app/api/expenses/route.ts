@@ -210,7 +210,7 @@ export async function POST(req: NextRequest) {
 
         return ShareableLink.create({
           ...(expense.userId ? { userId: expense.userId } : {}),
-          linkId: crypto.randomBytes(16).toString('hex'),
+          linkId: crypto.randomBytes(6).toString('base64url'),
           resourceType: 'expense',
           resourceId: expense._id.toString(),
           isActive: true,

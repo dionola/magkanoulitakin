@@ -44,7 +44,6 @@ interface UseCalculatorActionsArgs {
   setActiveTransactionGroupName: Dispatch<SetStateAction<string>>
   setActiveShareLinkId: Dispatch<SetStateAction<string | null>>
   setTransactionNameInput: Dispatch<SetStateAction<string>>
-  setShareCopied: Dispatch<SetStateAction<boolean>>
   lastLoadedKeyRef: MutableRefObject<string | null>
 }
 
@@ -86,7 +85,6 @@ export function useCalculatorActions({
   setActiveTransactionGroupName,
   setActiveShareLinkId,
   setTransactionNameInput,
-  setShareCopied,
   lastLoadedKeyRef,
 }: UseCalculatorActionsArgs) {
   const getPersonName = (id: string) => {
@@ -153,7 +151,6 @@ export function useCalculatorActions({
     setActiveTransactionGroupName('')
     setActiveShareLinkId(null)
     setTransactionNameInput('')
-    setShareCopied(false)
     lastLoadedKeyRef.current = null
     router.replace('/calculator')
   }
@@ -361,17 +358,6 @@ export function useCalculatorActions({
     setSaveError('')
   }
 
-  const copyShareLink = async () => {
-    if (!activeShareLinkId || typeof window === 'undefined') return
-    try {
-      await navigator.clipboard.writeText(`${window.location.origin}/share/${activeShareLinkId}`)
-      setShareCopied(true)
-      window.setTimeout(() => setShareCopied(false), 2000)
-    } catch {
-      setSaveError('failed to copy share link')
-    }
-  }
-
   return {
     addPerson,
     removePerson,
@@ -383,7 +369,6 @@ export function useCalculatorActions({
     removeExpense,
     startEditExpense,
     cancelEditExpense,
-    copyShareLink,
     getPersonName,
   }
 }

@@ -264,7 +264,7 @@ export function ReceiptScanner({ currency, people, onAddExpenses }: ReceiptScann
           </div>
 
           {/* Item list */}
-          <div className="space-y-1 max-h-64 overflow-y-auto">
+          <div className="space-y-1 max-h-[50vh] md:max-h-64 overflow-y-auto">
             {items.map((item, idx) => (
               <div key={idx} className="flex items-center gap-2 py-1.5 px-1 rounded hover:bg-foreground/5 transition">
                 <input

@@ -92,11 +92,11 @@ export function ExpenseBreakdown({
               return (
                 <div key={person.id} className="flex items-center justify-between border-b border-border/20 pb-4">
                   <p className="font-bold text-lg">{person.name}</p>
-                  <div className="flex gap-12 text-lg font-bold">
-                    <span>Paid: {currency}{(personTotals?.paid ?? 0).toFixed(2)}</span>
-                    <span>Owes: {currency}{(personTotals?.owes ?? 0).toFixed(2)}</span>
+                  <div className="flex flex-col items-end gap-0.5 sm:flex-row sm:gap-8 text-base font-bold">
+                    <span className="text-muted-foreground">Paid <span className="text-foreground">{currency}{(personTotals?.paid ?? 0).toFixed(2)}</span></span>
+                    <span className="text-muted-foreground">Owes <span className="text-foreground">{currency}{(personTotals?.owes ?? 0).toFixed(2)}</span></span>
                     <span className={balance > 0.01 ? 'text-green-500' : balance < -0.01 ? 'text-red-500' : 'text-muted-foreground'}>
-                      Balance: {currency}{balance.toFixed(2)}
+                      {balance > 0.01 ? '+' : ''}{currency}{balance.toFixed(2)}
                     </span>
                   </div>
                 </div>

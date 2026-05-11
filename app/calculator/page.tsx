@@ -15,7 +15,9 @@ import { ExpenseComposer } from '@/components/calculator/ExpenseComposer'
 import { ExpenseBreakdown } from '@/components/calculator/ExpenseBreakdown'
 import { CurrencySelector } from '@/components/calculator/CurrencySelector'
 import { ReceiptScanner } from '@/components/calculator/ReceiptScanner'
+import { RecentTransactions } from '@/components/calculator/RecentTransactions'
 import { useCalculatorActions } from '@/hooks/useCalculatorActions'
+import { useLocalStorage } from '@/hooks/useLocalStorage'
 import {
   buildCalculatorStateFromSavedExpenses,
   initialCalculatorPerson,
@@ -61,8 +63,8 @@ function CalculatorTransactionSkeleton() {
 function CalculatorPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [people, setPeople] = useState<Person[]>([initialCalculatorPerson])
-  const [expenses, setExpenses] = useState<CalculatorExpense[]>([])
+  const [people, setPeople] = useLocalStorage<Person[]>('calc:people', [initialCalculatorPerson])
+  const [expenses, setExpenses] = useLocalStorage<CalculatorExpense[]>('calc:expenses', [])
   const [newPersonName, setNewPersonName] = useState('')
   const [newExpenseName, setNewExpenseName] = useState('')
   const [newExpenseAmount, setNewExpenseAmount] = useState('')
@@ -73,8 +75,8 @@ function CalculatorPage() {
   const [newExpenseSplitWith, setNewExpenseSplitWith] = useState<string[]>([initialCalculatorPerson.id])
   const [paidByDropdownOpen, setPaidByDropdownOpen] = useState(false)
   const [currencyDropdownOpen, setCurrencyDropdownOpen] = useState(false)
-  const [currency, setCurrency] = useState('₱')
-  const [currencyCode, setCurrencyCode] = useState('PHP')
+  const [currency, setCurrency] = useLocalStorage<string>('calc:currency', '₱')
+  const [currencyCode, setCurrencyCode] = useLocalStorage<string>('calc:currencyCode', 'PHP')
   const [splitDropdownOpen, setSplitDropdownOpen] = useState(false)
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null)
   const [editingExpenseMeta, setEditingExpenseMeta] = useState<Pick<CalculatorExpense, 'sharedExpenseId' | 'transactionGroupId' | 'transactionGroupName'> | null>(null)
@@ -85,11 +87,10 @@ function CalculatorPage() {
   const [isSavingExpense, setIsSavingExpense] = useState(false)
   const [isLoadingSavedExpense, setIsLoadingSavedExpense] = useState(false)
   const [isUpdatingTransactionName, setIsUpdatingTransactionName] = useState(false)
-  const [activeTransactionGroupId, setActiveTransactionGroupId] = useState<string | null>(null)
-  const [activeTransactionGroupName, setActiveTransactionGroupName] = useState('')
-  const [activeShareLinkId, setActiveShareLinkId] = useState<string | null>(null)
-  const [transactionNameInput, setTransactionNameInput] = useState('')
-  const [shareCopied, setShareCopied] = useState(false)
+  const [activeTransactionGroupId, setActiveTransactionGroupId] = useLocalStorage<string | null>('calc:transactionGroupId', null)
+  const [activeTransactionGroupName, setActiveTransactionGroupName] = useLocalStorage<string>('calc:transactionGroupName', '')
+  const [activeShareLinkId, setActiveShareLinkId] = useLocalStorage<string | null>('calc:shareLinkId', null)
+  const [transactionNameInput, setTransactionNameInput] = useLocalStorage<string>('calc:transactionNameInput', '')
   const [editingPersonId, setEditingPersonId] = useState<string | null>(null)
   const [editingPersonName, setEditingPersonName] = useState('')
   const [friends, setFriends] = useState<{ id: string; name: string }[]>([])
@@ -231,7 +232,6 @@ function CalculatorPage() {
     removeExpense,
     startEditExpense,
     cancelEditExpense,
-    copyShareLink,
     getPersonName,
   } = useCalculatorActions({
     router,
@@ -271,7 +271,6 @@ function CalculatorPage() {
     setActiveTransactionGroupName,
     setActiveShareLinkId,
     setTransactionNameInput,
-    setShareCopied,
     lastLoadedKeyRef,
   })
 
@@ -313,6 +312,7 @@ function CalculatorPage() {
           <CalculatorTransactionSkeleton />
         ) : (
           <div className="grid gap-16 lg:grid-cols-2">
+            <div>
             <PeoplePanel
               people={people}
               newPersonName={newPersonName}
@@ -336,13 +336,14 @@ function CalculatorPage() {
                 setFriendSuggestionsOpen(false)
               }}
             />
+            <RecentTransactions isLoggedIn={isLoggedIn} />
+            </div>
 
             <div className="space-y-6">
               <ExpenseComposer
               people={people}
               expensesCount={expenses.length}
               activeTransactionGroupId={activeTransactionGroupId}
-              activeShareLinkId={activeShareLinkId}
               transactionNameInput={transactionNameInput}
               hasPendingTransactionNameChange={hasPendingTransactionNameChange}
               isUpdatingTransactionName={isUpdatingTransactionName}
@@ -357,7 +358,6 @@ function CalculatorPage() {
               editingExpenseId={editingExpenseId}
               formErrors={formErrors}
               saveError={saveError}
-              shareCopied={shareCopied}
               isLoggedIn={isLoggedIn}
               isSavingExpense={isSavingExpense}
               categoryRef={categoryRef}
@@ -391,7 +391,6 @@ function CalculatorPage() {
               onSplitToggle={() => setSplitDropdownOpen((open) => !open)}
               onToggleSplitWith={toggleSplitWith}
               onSelectAllSplitWith={selectAllSplitWith}
-              onCopyShareLink={() => void copyShareLink()}
               onResetTransaction={resetCalculatorForNewTransaction}
               onCancelEdit={cancelEditExpense}
               onSubmit={() => void addExpense()}
