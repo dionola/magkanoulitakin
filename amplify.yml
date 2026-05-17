@@ -1,0 +1,27 @@
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - corepack enable
+        - corepack prepare pnpm@10.27.0 --activate
+        - pnpm install --frozen-lockfile
+    build:
+      commands:
+        - export NEXTAUTH_URL=$(aws ssm get-parameter --name /dionola/prod/budgtr/NEXTAUTH_URL --with-decryption --query Parameter.Value --output text --region ap-southeast-1)
+        - export NEXTAUTH_SECRET=$(aws ssm get-parameter --name /dionola/prod/budgtr/NEXTAUTH_SECRET --with-decryption --query Parameter.Value --output text --region ap-southeast-1)
+        - export MONGODB_URI=$(aws ssm get-parameter --name /dionola/prod/budgtr/MONGODB_URI --with-decryption --query Parameter.Value --output text --region ap-southeast-1)
+        - export GOOGLE_CLIENT_ID=$(aws ssm get-parameter --name /dionola/prod/budgtr/GOOGLE_CLIENT_ID --with-decryption --query Parameter.Value --output text --region ap-southeast-1)
+        - export GOOGLE_CLIENT_SECRET=$(aws ssm get-parameter --name /dionola/prod/budgtr/GOOGLE_CLIENT_SECRET --with-decryption --query Parameter.Value --output text --region ap-southeast-1)
+        - export NEXT_PUBLIC_APP_URL=$(aws ssm get-parameter --name /dionola/prod/budgtr/NEXT_PUBLIC_APP_URL --with-decryption --query Parameter.Value --output text --region ap-southeast-1)
+        - export OPENAI_API_KEY=$(aws ssm get-parameter --name /dionola/prod/budgtr/OPENAI_API_KEY --with-decryption --query Parameter.Value --output text --region ap-southeast-1)
+        - pnpm run lint
+        - pnpm run build
+  artifacts:
+    baseDirectory: .next
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - .next/cache/**/*
+      - node_modules/**/*

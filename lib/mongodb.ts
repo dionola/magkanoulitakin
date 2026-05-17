@@ -12,7 +12,7 @@ const clientPromise =
     ? new MongoClient(uri).connect()
     : new Promise<MongoClient>(() => {}))
 
-if (process.env.NODE_ENV !== 'production' && uri) {
+if (uri) {
   global.mongoClientPromise = clientPromise
 }
 
